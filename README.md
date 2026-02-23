@@ -5,8 +5,8 @@
 <h1 align="center">Tendril</h1>
 
 <p align="center">
-  Separate any song into stems — vocals, drums, bass, and instrumentals.<br>
-  Search YouTube, hit enter, and let Tendril do the rest.
+  Audio stem separation — vocals, drums, bass, and instrumentals.<br>
+  Search YouTube or drop in a local file.
 </p>
 
 <p align="center">
@@ -20,15 +20,14 @@
 
 ## What It Does
 
-Tendril is a desktop app that splits audio tracks into individual stems using [Demucs](https://github.com/adefossez/demucs), a state-of-the-art AI model for music source separation.
+Tendril is a desktop app that splits audio tracks into individual stems using [Demucs](https://github.com/adefossez/demucs).
 
 - **Search YouTube** and download audio directly, or process local files
 - **Separate into 4 stems**: vocals, drums, bass, other
 - **Create an instrumental mix** automatically (drums + bass + other)
 - **Export** to WAV, FLAC, MP3, or AAC
-- **GPU-accelerated** — uses MPS on Apple Silicon, CUDA on NVIDIA GPUs, with automatic detection
-
-No Python. No Electron. One binary that manages its own dependencies.
+- **GPU-accelerated** — MPS on Apple Silicon, CUDA on NVIDIA GPUs, automatic detection
+- **Self-contained** — manages its own dependencies at runtime
 
 ## Install
 
@@ -41,7 +40,7 @@ On first launch, Tendril will automatically download:
 Click the download icon in the app header to install the heavier dependencies:
 - **Python** (standalone, won't touch your system install)
 - **PyTorch** (with CUDA support if an NVIDIA GPU is detected)
-- **Demucs** — the AI stem separation model
+- **Demucs** — stem separation model
 
 Everything is stored in your platform's standard data directory — nothing is installed globally.
 
@@ -62,7 +61,7 @@ Song Name (video_id)/
 └── instrumental.flac
 ```
 
-If you search for a song you've already processed, Tendril shows a folder icon instead of + so you can jump straight to the output.
+If a song has already been processed, the result shows a folder icon instead of + to open the output directly.
 
 ## Settings
 
@@ -74,7 +73,7 @@ If you search for a song you've already processed, Tendril shows a folder icon i
 | Preserve full mix | Saves the original audio alongside stems | Off |
 | Output directory | Any folder | `~/Music/Tendril` |
 
-**Auto** GPU mode picks the best available accelerator — MPS on Apple Silicon Macs, CUDA on Windows/Linux with NVIDIA GPUs, CPU everywhere else.
+**Auto** uses MPS on Apple Silicon, CUDA on NVIDIA GPUs, and CPU otherwise.
 
 ## Building from Source
 
@@ -116,7 +115,7 @@ tendril/
 │           └── widgets/     # Theme, components
 ```
 
-`tendril-core` is independently usable — it has no UI dependency and could back a CLI or different frontend.
+`tendril-core` has no UI dependency and can be used independently.
 
 ## Platforms
 
