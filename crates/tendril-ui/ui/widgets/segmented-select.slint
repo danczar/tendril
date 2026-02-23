@@ -1,0 +1,47 @@
+import { Theme } from "theme.slint";
+
+export component SegmentedSelect inherits Rectangle {
+    in property <[string]> model;
+    in-out property <int> current-index: 0;
+    callback selected(int);
+
+    height: 36px;
+    background: Theme.bg-base;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border-default;
+
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 2px;
+
+        for option[idx] in root.model: Rectangle {
+            horizontal-stretch: 1;
+            border-radius: Theme.radius-xs;
+            background: idx == root.current-index ? Theme.bg-surface
+                      : seg-touch.has-hover ? #ffffff0a
+                      : transparent;
+
+            animate background { duration: Theme.duration-fast; easing: ease-out; }
+
+            Text {
+                text: option;
+                color: idx == root.current-index ? Theme.text-primary : Theme.text-secondary;
+                font-size: Theme.text-base;
+                font-weight: idx == root.current-index ? 500 : 400;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+
+                animate color { duration: Theme.duration-fast; easing: ease-out; }
+            }
+
+            seg-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.current-index = idx;
+                    root.selected(idx);
+                }
+            }
+        }
+    }
+}

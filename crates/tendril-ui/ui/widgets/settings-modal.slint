@@ -1,0 +1,266 @@
+import { Theme } from "theme.slint";
+import { IconClose } from "icons.slint";
+import { SegmentedSelect } from "segmented-select.slint";
+
+export component SettingsModal inherits Rectangle {
+    in-out property <bool> showing;
+    in-out property <int> format-index: 1;
+    in-out property <int> gpu-index: 0;
+    in-out property <int> model-index: 1;
+    in-out property <string> output-dir: "";
+    in-out property <bool> preserve-full-mix: false;
+    callback settings-changed();
+    callback browse-output-dir();
+    callback close();
+
+    // Fill entire parent
+    width: 100%;
+    height: 100%;
+    opacity: root.showing ? 1.0 : 0.0;
+
+    animate opacity { duration: Theme.duration-slow; easing: ease-out; }
+
+    // Only process input when visible
+    if root.showing: Rectangle {
+        width: 100%;
+        height: 100%;
+
+        // Backdrop
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: Theme.bg-overlay;
+
+            backdrop-touch := TouchArea {
+                clicked => { root.close(); }
+            }
+        }
+
+        // Modal card — centered
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 420px;
+            height: modal-content.preferred-height + 2 * Theme.space-6;
+            background: Theme.bg-elevated;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.border-default;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000080;
+            drop-shadow-offset-y: 8px;
+
+            // Block clicks from reaching backdrop
+            TouchArea {}
+
+            modal-content := VerticalLayout {
+                padding: Theme.space-6;
+                spacing: Theme.space-5;
+
+                // Header
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    Text {
+                        text: "Settings";
+                        color: Theme.text-primary;
+                        font-size: Theme.text-xl;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    // Close button
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: Theme.radius-sm;
+                        background: close-touch.has-hover ? Theme.bg-surface : transparent;
+
+                        animate background { duration: Theme.duration-fast; easing: ease-out; }
+
+                        IconClose {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            icon-color: close-touch.has-hover ? Theme.text-secondary : Theme.text-tertiary;
+                            animate icon-color { duration: Theme.duration-fast; easing: ease-out; }
+                        }
+
+                        close-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.close(); }
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: Theme.border-default;
+                }
+
+                // Output format
+                VerticalLayout {
+                    spacing: Theme.space-2;
+
+                    Text {
+                        text: "Output Format";
+                        color: Theme.text-secondary;
+                        font-size: Theme.text-sm;
+                    }
+
+                    SegmentedSelect {
+                        model: ["WAV", "FLAC", "MP3", "AAC"];
+                        current-index <=> root.format-index;
+                        selected(idx) => { root.settings-changed(); }
+                    }
+                }
+
+                // Preserve full mix toggle
+                HorizontalLayout {
+                    spacing: Theme.space-3;
+                    height: 28px;
+
+                    Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: Theme.radius-xs;
+                        border-width: 1px;
+                        border-color: root.preserve-full-mix ? Theme.accent : Theme.border-default;
+                        background: root.preserve-full-mix ? Theme.accent : transparent;
+
+                        animate background { duration: Theme.duration-fast; easing: ease-out; }
+                        animate border-color { duration: Theme.duration-fast; easing: ease-out; }
+
+                        // Checkmark
+                        if root.preserve-full-mix: Text {
+                            text: "\u{2713}";
+                            color: Theme.bg-base;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        mix-toggle := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.preserve-full-mix = !root.preserve-full-mix;
+                                root.settings-changed();
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Preserve full mix";
+                        color: Theme.text-secondary;
+                        font-size: Theme.text-sm;
+                        vertical-alignment: center;
+
+                        mix-label-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.preserve-full-mix = !root.preserve-full-mix;
+                                root.settings-changed();
+                            }
+                        }
+                    }
+                }
+
+                // Model
+                VerticalLayout {
+                    spacing: Theme.space-2;
+
+                    Text {
+                        text: "Model";
+                        color: Theme.text-secondary;
+                        font-size: Theme.text-sm;
+                    }
+
+                    SegmentedSelect {
+                        model: ["Demucs (Fast)", "Demucs - Finetuned (Slower)"];
+                        current-index <=> root.model-index;
+                        selected(idx) => { root.settings-changed(); }
+                    }
+                }
+
+                // GPU backend
+                VerticalLayout {
+                    spacing: Theme.space-2;
+
+                    Text {
+                        text: "GPU Backend";
+                        color: Theme.text-secondary;
+                        font-size: Theme.text-sm;
+                    }
+
+                    SegmentedSelect {
+                        model: ["Auto", "CPU"];
+                        current-index <=> root.gpu-index;
+                        selected(idx) => { root.settings-changed(); }
+                    }
+                }
+
+                // Output directory
+                VerticalLayout {
+                    spacing: Theme.space-2;
+
+                    Text {
+                        text: "Output Directory";
+                        color: Theme.text-secondary;
+                        font-size: Theme.text-sm;
+                    }
+
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 36px;
+                            background: Theme.bg-base;
+                            border-radius: Theme.radius-sm;
+                            border-width: 1px;
+                            border-color: Theme.border-default;
+
+                            HorizontalLayout {
+                                padding-left: Theme.space-3;
+                                padding-right: Theme.space-3;
+
+                                Text {
+                                    text: root.output-dir;
+                                    color: Theme.text-primary;
+                                    font-size: Theme.text-base;
+                                    overflow: elide;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        // Browse button
+                        Rectangle {
+                            width: 72px;
+                            height: 36px;
+                            background: browse-touch.has-hover ? Theme.bg-surface : Theme.bg-base;
+                            border-radius: Theme.radius-sm;
+                            border-width: 1px;
+                            border-color: Theme.border-default;
+                            animate background { duration: Theme.duration-fast; }
+
+                            Text {
+                                text: "Browse";
+                                color: Theme.text-secondary;
+                                font-size: Theme.text-sm;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            browse-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.browse-output-dir(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,110 @@
+import { Theme } from "theme.slint";
+import { IconClose } from "icons.slint";
+
+export struct QueueItemData {
+    job-id: int,
+    title: string,
+    stage: string,
+    progress: float,
+    stage-color: color,
+    thumbnail: image,
+}
+
+export component QueueItem inherits Rectangle {
+    in property <QueueItemData> data;
+    callback remove();
+
+    height: 72px;
+    background: touch.has-hover ? Theme.bg-surface : transparent;
+    border-radius: Theme.radius-sm;
+
+    animate background { duration: Theme.duration-normal; easing: ease-out; }
+
+    touch := TouchArea {}
+
+    HorizontalLayout {
+        padding-left: Theme.space-2;
+        padding-right: Theme.space-2;
+        spacing: Theme.space-3;
+
+        // Thumbnail
+        Rectangle {
+            width: 85px;
+            height: 48px;
+            y: (parent.height - self.height) / 2;
+            border-radius: Theme.radius-xs;
+            clip: true;
+            background: Theme.bg-elevated;
+
+            Image {
+                width: 100%;
+                height: 100%;
+                source: root.data.thumbnail;
+                image-fit: cover;
+            }
+
+        }
+
+        // Title + stage stacked
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 3px;
+
+            Text {
+                text: root.data.title;
+                color: Theme.text-primary;
+                font-size: Theme.text-base;
+                font-weight: 500;
+                overflow: elide;
+            }
+
+            // Stage label
+            Text {
+                text: root.data.stage;
+                color: root.data.stage-color;
+                font-size: Theme.text-sm;
+            }
+
+            // Progress bar
+            if root.data.progress > 0 && root.data.stage != "Done" && root.data.stage != "Failed" && root.data.stage != "Queued": Rectangle {
+                height: 4px;
+                background: Theme.bg-base;
+                border-radius: 2px;
+
+                Rectangle {
+                    width: parent.width * clamp(root.data.progress, 0, 1);
+                    height: parent.height;
+                    background: root.data.stage-color;
+                    border-radius: 2px;
+
+                    animate width { duration: Theme.duration-normal; easing: ease-out; }
+                }
+            }
+        }
+
+        // Remove button
+        Rectangle {
+            width: 28px;
+            height: 28px;
+            border-radius: Theme.radius-xs;
+            background: remove-touch.has-hover ? Theme.bg-surface : transparent;
+
+            animate background { duration: Theme.duration-fast; easing: ease-out; }
+
+            IconClose {
+                width: 12px;
+                height: 12px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon-color: remove-touch.has-hover ? Theme.text-secondary : Theme.text-tertiary;
+                animate icon-color { duration: Theme.duration-fast; easing: ease-out; }
+            }
+
+            remove-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.remove(); }
+            }
+        }
+    }
+}

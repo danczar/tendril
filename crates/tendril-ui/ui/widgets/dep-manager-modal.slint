@@ -1,0 +1,228 @@
+import { Theme } from "theme.slint";
+import { IconClose, IconUpdate } from "icons.slint";
+
+export struct DepItemData {
+    name: string,
+    version: string,
+    status: string,         // "installed", "system", "missing"
+    update-available: bool,
+}
+
+export component DepManagerModal inherits Rectangle {
+    in-out property <bool> showing;
+    in property <[DepItemData]> dep-items: [];
+    in-out property <bool> downloading: false;
+    in-out property <float> progress: 0.0;
+    in-out property <string> progress-status: "";
+    callback download-deps();
+    callback update-dep(string);
+    callback close();
+
+    width: 100%;
+    height: 100%;
+    opacity: root.showing ? 1.0 : 0.0;
+
+    animate opacity { duration: Theme.duration-slow; easing: ease-out; }
+
+    if root.showing: Rectangle {
+        width: 100%;
+        height: 100%;
+
+        // Backdrop
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: Theme.bg-overlay;
+
+            TouchArea {
+                clicked => { root.close(); }
+            }
+        }
+
+        // Modal card
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 480px;
+            height: modal-content.preferred-height + 2 * Theme.space-6;
+            background: Theme.bg-elevated;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.border-default;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000080;
+            drop-shadow-offset-y: 8px;
+
+            TouchArea {}
+
+            modal-content := VerticalLayout {
+                padding: Theme.space-6;
+                spacing: Theme.space-5;
+
+                // Header
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    Text {
+                        text: "Dependencies";
+                        color: Theme.text-primary;
+                        font-size: Theme.text-xl;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: Theme.radius-sm;
+                        background: close-touch.has-hover ? Theme.bg-surface : transparent;
+                        animate background { duration: Theme.duration-fast; easing: ease-out; }
+
+                        IconClose {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            icon-color: close-touch.has-hover ? Theme.text-secondary : Theme.text-tertiary;
+                            animate icon-color { duration: Theme.duration-fast; easing: ease-out; }
+                        }
+
+                        close-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.close(); }
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: Theme.border-default;
+                }
+
+                // Dependency list
+                VerticalLayout {
+                    spacing: 0;
+
+                    for dep in root.dep-items: Rectangle {
+                        height: 40px;
+                        background: dep-row-touch.has-hover ? Theme.bg-surface.transparentize(50%) : transparent;
+                        border-radius: Theme.radius-xs;
+                        animate background { duration: Theme.duration-fast; }
+
+                        dep-row-touch := TouchArea {}
+
+                        HorizontalLayout {
+                            padding-left: Theme.space-3;
+                            padding-right: Theme.space-3;
+                            spacing: Theme.space-3;
+
+                            // Status dot
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                y: (parent.height - self.height) / 2;
+                                background: dep.status == "installed" ? Theme.stage-done
+                                          : dep.status == "system" ? Theme.stage-download
+                                          : Theme.stage-error;
+                            }
+
+                            // Name
+                            Text {
+                                text: dep.name;
+                                color: Theme.text-primary;
+                                font-size: Theme.text-base;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+
+                            // Version or status label
+                            Text {
+                                text: dep.status == "missing" ? "Not installed"
+                                    : dep.status == "system" ? dep.version != "" ? dep.version + " (system)" : "System"
+                                    : dep.version != "" ? dep.version
+                                    : "Installed";
+                                color: dep.status == "missing" ? Theme.stage-error : Theme.text-tertiary;
+                                font-size: Theme.text-sm;
+                                vertical-alignment: center;
+                            }
+
+                            // Update button
+                            if dep.update-available: Rectangle {
+                                width: 24px;
+                                height: 24px;
+                                border-radius: Theme.radius-xs;
+                                background: update-touch.has-hover ? Theme.accent-muted : transparent;
+                                y: (parent.height - self.height) / 2;
+                                animate background { duration: Theme.duration-fast; }
+
+                                IconUpdate {
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                }
+
+                                update-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.update-dep(dep.name); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    height: 1px;
+                    background: Theme.border-default;
+                }
+
+                // Download / progress area
+                if !root.downloading: Rectangle {
+                    height: 40px;
+                    background: dl-touch.has-hover ? Theme.accent-hover : Theme.accent;
+                    border-radius: Theme.radius-sm;
+                    animate background { duration: Theme.duration-fast; easing: ease-out; }
+
+                    Text {
+                        text: "Download Dependencies";
+                        color: Theme.bg-base;
+                        font-size: Theme.text-base;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    dl-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.download-deps(); }
+                    }
+                }
+
+                if root.downloading: VerticalLayout {
+                    spacing: Theme.space-2;
+
+                    // Progress bar
+                    Rectangle {
+                        height: 6px;
+                        background: Theme.bg-base;
+                        border-radius: 3px;
+
+                        Rectangle {
+                            width: parent.width * root.progress;
+                            height: parent.height;
+                            background: Theme.accent;
+                            border-radius: 3px;
+
+                            animate width { duration: Theme.duration-normal; easing: ease-out; }
+                        }
+                    }
+
+                    Text {
+                        text: root.progress-status;
+                        color: Theme.text-tertiary;
+                        font-size: Theme.text-xs;
+                    }
+                }
+            }
+        }
+    }
+}

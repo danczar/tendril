@@ -1,0 +1,73 @@
+import "../fonts/AlegreyaSansSC-Regular.ttf";
+import "../fonts/AlegreyaSansSC-Medium.ttf";
+import "../fonts/AlegreyaSans-Regular.ttf";
+import "../fonts/AlegreyaSans-Medium.ttf";
+import "../fonts/AlegreyaSans-Bold.ttf";
+import "../fonts/SpaceGrotesk.ttf";
+
+// Tendril design tokens — earthy dark theme.
+// Warm browns, organic greens, the quiet palette of a vine in dark soil.
+export global Theme {
+    // ── Backgrounds — warm brown undertones, like bark and soil ──
+    out property <color> bg-base:      #1b1a17;
+    out property <color> bg-elevated:  #24231f;
+    out property <color> bg-surface:   #2d2c27;
+    out property <color> bg-overlay:   #0f0e0baa;
+
+    // ── Borders — warm, soft ──
+    out property <color> border-default: #ffffff12;
+    out property <color> border-subtle:  #ffffff0a;
+    out property <color> border-focus:   #5cb89650;
+
+    // ── Text — warm off-whites and clay grays ──
+    out property <color> text-primary:   #e8e6e1;
+    out property <color> text-secondary: #9c9890;
+    out property <color> text-tertiary:  #615e56;
+
+    // ── Accent — muted jade green, like a new vine shoot ──
+    out property <color> accent:       #5cb896;
+    out property <color> accent-hover: #6ccba6;
+    out property <color> accent-muted: #5cb8961a;
+
+    // ── Stage colors — softened to fit the earthy palette ──
+    out property <color> stage-download: #5b94d4;
+    out property <color> stage-split:    #9179d4;
+    out property <color> stage-convert:  #d4a056;
+    out property <color> stage-mix:      #5cb896;
+    out property <color> stage-done:     #6bba7e;
+    out property <color> stage-error:    #d46b6b;
+    out property <color> stage-queued:   #9c9890;
+
+    // ── Spacing ──
+    out property <length> space-1:  4px;
+    out property <length> space-2:  8px;
+    out property <length> space-3:  12px;
+    out property <length> space-4:  16px;
+    out property <length> space-5:  20px;
+    out property <length> space-6:  24px;
+    out property <length> space-8:  32px;
+    out property <length> space-12: 48px;
+
+    // ── Typography ──
+    out property <string> font-primary: "Alegreya Sans";
+    out property <string> font-smallcaps: "Alegreya Sans SC";
+    out property <length> text-xs:   14px;
+    out property <length> text-sm:   15.5px;
+    out property <length> text-base: 17px;
+    out property <length> text-md:   18px;
+    out property <length> text-lg:   20px;
+    out property <length> text-xl:   24px;
+    out property <length> text-2xl:  34px;
+
+    // ── Radius ──
+    out property <length> radius-xs: 4px;
+    out property <length> radius-sm: 6px;
+    out property <length> radius-md: 8px;
+    out property <length> radius-lg: 12px;
+
+    // ── Animation ──
+    out property <duration> duration-fast:   100ms;
+    out property <duration> duration-normal: 150ms;
+    out property <duration> duration-slow:   200ms;
+    out property <duration> duration-modal:  300ms;
+}

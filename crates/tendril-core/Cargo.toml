@@ -1,0 +1,20 @@
+[package]
+name = "tendril-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+directories = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+rustypipe = { workspace = true }
+futures = { workspace = true }
+flate2 = { workspace = true }
+tar = { workspace = true }
+regex = "1"

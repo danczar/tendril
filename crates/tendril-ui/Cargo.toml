@@ -1,0 +1,29 @@
+[package]
+name = "tendril-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "Tendril"
+path = "src/main.rs"
+
+[dependencies]
+tendril-core = { path = "../tendril-core" }
+slint = "1.15"
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+reqwest = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+futures = { workspace = true }
+rfd = "0.15"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSRunningApplication"] }
+objc2-foundation = { version = "0.3", features = ["NSData"] }
+
+[build-dependencies]
+slint-build = "1.15"

@@ -1,0 +1,282 @@
+import { Theme } from "widgets/theme.slint";
+import { SearchBar } from "widgets/search-bar.slint";
+import { ResultRow, SearchResultData } from "widgets/result-row.slint";
+import { QueueItem, QueueItemData } from "widgets/queue-item.slint";
+import { SettingsModal } from "widgets/settings-modal.slint";
+import { DepManagerModal, DepItemData } from "widgets/dep-manager-modal.slint";
+import { IconGear, IconDownload, IconTendril } from "widgets/icons.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export { SearchResultData, QueueItemData, DepItemData }
+
+export component MainWindow inherits Window {
+    title: "";
+    icon: @image-url("tendril-icon.png");
+    preferred-width: 900px;
+    preferred-height: 680px;
+
+    init => { search-bar.focus-input(); }
+    min-width: 680px;
+    min-height: 520px;
+    default-font-family: Theme.font-primary;
+    background: Theme.bg-base;
+
+    // ── Data models ──
+    in-out property <[SearchResultData]> search-results: [];
+    in property <[QueueItemData]> queue-items: [];
+    in-out property <string> status-message: "Ready";
+    in-out property <string> search-text: "";
+
+    // ── Animation state ──
+    in-out property <int> enqueued-index: -1;
+    in-out property <bool> results-collapsing: false;
+    in-out property <bool> searching: false;
+
+    // ── Settings state ──
+    in-out property <int> format-index: 1;
+    in-out property <int> gpu-index: 0;
+    in-out property <int> model-index: 1;
+    in-out property <string> output-dir: "";
+    in-out property <bool> settings-visible: false;
+    in-out property <bool> preserve-full-mix: false;
+
+    // ── Dependency manager state ──
+    in-out property <bool> deps-visible: false;
+    in property <[DepItemData]> dep-items: [];
+    in-out property <bool> deps-downloading: false;
+    in-out property <float> deps-progress: 0.0;
+    in-out property <string> deps-status: "";
+
+    // ── Callbacks to Rust ──
+    callback search(string);
+    callback search-changed(string);
+    callback enqueue-result(int);
+    callback open-result-folder(int);
+    callback remove-job(int);
+    callback settings-changed();
+    callback download-deps();
+    callback update-dep(string);
+    callback browse-output-dir();
+
+    // ── Main layout ──
+    VerticalLayout {
+        padding-left: Theme.space-6;
+        padding-right: Theme.space-6;
+        padding-top: Theme.space-4;
+        padding-bottom: 0;
+        spacing: Theme.space-4;
+
+        // ── Header ──
+        HorizontalLayout {
+            alignment: space-between;
+            height: 32px;
+
+            HorizontalLayout {
+                spacing: Theme.space-2;
+
+                IconTendril {
+                    y: (parent.height - self.height) / 2;
+                }
+
+                Text {
+                    text: "Tendril";
+                    color: Theme.text-primary;
+                    font-size: Theme.text-xl;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.space-1;
+
+                // Dependencies button
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: Theme.radius-sm;
+                    background: deps-touch.has-hover ? Theme.bg-surface : transparent;
+
+                    animate background { duration: Theme.duration-fast; easing: ease-out; }
+
+                    IconDownload {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon-color: deps-touch.has-hover ? Theme.text-secondary : Theme.text-tertiary;
+                        animate icon-color { duration: Theme.duration-fast; easing: ease-out; }
+                    }
+
+                    deps-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.deps-visible = !root.deps-visible; }
+                    }
+                }
+
+                // Settings button
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: Theme.radius-sm;
+                    background: gear-touch.has-hover ? Theme.bg-surface : transparent;
+
+                    animate background { duration: Theme.duration-fast; easing: ease-out; }
+
+                    IconGear {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon-color: gear-touch.has-hover ? Theme.text-secondary : Theme.text-tertiary;
+                        animate icon-color { duration: Theme.duration-fast; easing: ease-out; }
+                    }
+
+                    gear-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.settings-visible = !root.settings-visible; }
+                    }
+                }
+            }
+        }
+
+        // ── Search bar ──
+        search-bar := SearchBar {
+            text <=> root.search-text;
+            searching: root.searching;
+            changed(query) => { root.search-changed(query); }
+            submitted(query) => { root.search(query); }
+            cleared => { root.search-results = []; }
+        }
+
+        // ── Scrollable content ──
+        scroll := Flickable {
+            vertical-stretch: 1;
+
+
+            VerticalLayout {
+                spacing: 0;
+                alignment: start;
+
+                // ── Results ──
+                if root.search-results.length > 0: VerticalLayout {
+                    spacing: Theme.space-2;
+
+                    for result[idx] in root.search-results: ResultRow {
+                        data: result;
+                        enqueued: idx == root.enqueued-index;
+                        collapsing: root.results-collapsing;
+                        enqueue => {
+                            root.enqueue-result(idx);
+                        }
+                        open-folder => {
+                            root.open-result-folder(idx);
+                        }
+                    }
+                }
+
+                // ── Empty state ──
+                if root.search-results.length == 0 && root.queue-items.length == 0: Rectangle {
+                    height: 200px;
+
+                    Text {
+                        text: "Search for a song to get started";
+                        color: Theme.text-tertiary;
+                        font-size: Theme.text-md;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // ── Queue section ──
+                if root.queue-items.length > 0: VerticalLayout {
+                    spacing: 0;
+
+                    // Queue header
+                    VerticalLayout {
+                        spacing: Theme.space-2;
+                        padding-bottom: Theme.space-1;
+
+                        Rectangle {
+                            height: 1px;
+                            background: Theme.border-default;
+                        }
+
+                        HorizontalLayout {
+                            padding-left: Theme.space-2;
+
+                            Text {
+                                text: "queue (" + root.queue-items.length + ")";
+                                color: Theme.text-tertiary;
+                                font-family: Theme.font-smallcaps;
+                                font-size: Theme.text-base;
+                                font-weight: 500;
+                                letter-spacing: 0.8px;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Queue items
+                    for item in root.queue-items: QueueItem {
+                        data: item;
+                        remove => { root.remove-job(item.job-id); }
+                    }
+                }
+            }
+        }
+
+        // ── Status bar ──
+        Rectangle {
+            height: 28px;
+
+            // Top border
+            Rectangle {
+                height: 1px;
+                background: Theme.border-subtle;
+                y: 0;
+            }
+
+            HorizontalLayout {
+                padding-left: Theme.space-3;
+                padding-right: Theme.space-3;
+                alignment: space-between;
+
+                Text {
+                    text: root.status-message;
+                    color: Theme.text-tertiary;
+                    font-size: Theme.text-xs;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "v0.1.0";
+                    color: Theme.text-tertiary;
+                    font-size: Theme.text-xs;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    // ── Settings modal overlay ──
+    SettingsModal {
+        showing: root.settings-visible;
+        format-index <=> root.format-index;
+        gpu-index <=> root.gpu-index;
+        model-index <=> root.model-index;
+        output-dir <=> root.output-dir;
+        preserve-full-mix <=> root.preserve-full-mix;
+        settings-changed => { root.settings-changed(); }
+        browse-output-dir => { root.browse-output-dir(); }
+        close => { root.settings-visible = false; }
+    }
+
+    // ── Dependency manager modal overlay ──
+    DepManagerModal {
+        showing: root.deps-visible;
+        dep-items: root.dep-items;
+        downloading: root.deps-downloading;
+        progress: root.deps-progress;
+        progress-status: root.deps-status;
+        download-deps => { root.download-deps(); }
+        update-dep(name) => { root.update-dep(name); }
+        close => { root.deps-visible = false; }
+    }
+}

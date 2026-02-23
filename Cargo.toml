@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["crates/tendril-core", "crates/tendril-ui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+directories = "6"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rustypipe = "0.11"
+futures = "0.3"
+flate2 = "1"
+tar = "0.4"
+regex = "1"

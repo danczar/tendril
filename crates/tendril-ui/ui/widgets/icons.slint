@@ -1,0 +1,292 @@
+// Outline-style vector icons using stroke rendering.
+// Each icon is 18x18 with a configurable color.
+
+export component IconSearch inherits Rectangle {
+    in property <color> icon-color: #9c9890;
+    width: 18px;
+    height: 18px;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        stroke: root.icon-color;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+
+        // Circle
+        MoveTo { x: 11; y: 3; }
+        ArcTo { x: 11; y: 19; radius-x: 8; radius-y: 8; }
+        ArcTo { x: 11; y: 3; radius-x: 8; radius-y: 8; }
+        Close {}
+
+        // Handle
+        MoveTo { x: 16.5; y: 16.5; }
+        LineTo { x: 21; y: 21; }
+    }
+}
+
+export component IconGear inherits Rectangle {
+    in property <color> icon-color: #9c9890;
+    width: 18px;
+    height: 18px;
+
+    // Simplified settings icon: three horizontal lines with dots (sliders)
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        stroke: root.icon-color;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+
+        // Top line
+        MoveTo { x: 4; y: 6; }
+        LineTo { x: 20; y: 6; }
+
+        // Middle line
+        MoveTo { x: 4; y: 12; }
+        LineTo { x: 20; y: 12; }
+
+        // Bottom line
+        MoveTo { x: 4; y: 18; }
+        LineTo { x: 20; y: 18; }
+    }
+
+    // Slider knobs as small filled circles
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        fill: root.icon-color;
+
+        // Top knob at x=15
+        MoveTo { x: 15; y: 4; }
+        ArcTo { x: 15; y: 8; radius-x: 2; radius-y: 2; }
+        ArcTo { x: 15; y: 4; radius-x: 2; radius-y: 2; }
+        Close {}
+
+        // Middle knob at x=8
+        MoveTo { x: 8; y: 10; }
+        ArcTo { x: 8; y: 14; radius-x: 2; radius-y: 2; }
+        ArcTo { x: 8; y: 14; radius-x: 2; radius-y: 2; }
+        Close {}
+
+        // Bottom knob at x=16
+        MoveTo { x: 16; y: 16; }
+        ArcTo { x: 16; y: 20; radius-x: 2; radius-y: 2; }
+        ArcTo { x: 16; y: 16; radius-x: 2; radius-y: 2; }
+        Close {}
+    }
+}
+
+export component IconPlus inherits Rectangle {
+    in property <color> icon-color: #5cb896;
+    width: 18px;
+    height: 18px;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        stroke: root.icon-color;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+
+        // Horizontal
+        MoveTo { x: 5; y: 12; }
+        LineTo { x: 19; y: 12; }
+
+        // Vertical
+        MoveTo { x: 12; y: 5; }
+        LineTo { x: 12; y: 19; }
+    }
+}
+
+export component IconClose inherits Rectangle {
+    in property <color> icon-color: #615e56;
+    width: 18px;
+    height: 18px;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        stroke: root.icon-color;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+
+        // First diagonal
+        MoveTo { x: 6; y: 6; }
+        LineTo { x: 18; y: 18; }
+
+        // Second diagonal
+        MoveTo { x: 18; y: 6; }
+        LineTo { x: 6; y: 18; }
+    }
+}
+
+export component IconMusic inherits Rectangle {
+    in property <color> icon-color: #615e56;
+    width: 18px;
+    height: 18px;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        stroke: root.icon-color;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+
+        // Stem
+        MoveTo { x: 9; y: 18; }
+        LineTo { x: 9; y: 5; }
+        LineTo { x: 21; y: 3; }
+        LineTo { x: 21; y: 16; }
+
+        // Left note head
+        MoveTo { x: 9; y: 18; }
+        ArcTo { x: 3; y: 18; radius-x: 3; radius-y: 2; }
+        ArcTo { x: 9; y: 18; radius-x: 3; radius-y: 2; }
+
+        // Right note head
+        MoveTo { x: 21; y: 16; }
+        ArcTo { x: 15; y: 16; radius-x: 3; radius-y: 2; }
+        ArcTo { x: 21; y: 16; radius-x: 3; radius-y: 2; }
+    }
+}
+
+export component IconDownload inherits Rectangle {
+    in property <color> icon-color: #9c9890;
+    width: 18px;
+    height: 18px;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        stroke: root.icon-color;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+
+        // Arrow down
+        MoveTo { x: 12; y: 3; }
+        LineTo { x: 12; y: 15; }
+
+        // Arrow head
+        MoveTo { x: 7; y: 11; }
+        LineTo { x: 12; y: 15; }
+        LineTo { x: 17; y: 11; }
+
+        // Tray
+        MoveTo { x: 3; y: 17; }
+        LineTo { x: 3; y: 20; }
+        LineTo { x: 21; y: 20; }
+        LineTo { x: 21; y: 17; }
+    }
+}
+
+export component IconUpdate inherits Rectangle {
+    in property <color> icon-color: #5b94d4;
+    width: 14px;
+    height: 14px;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        stroke: root.icon-color;
+        stroke-width: 2.5px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+
+        // Arrow up
+        MoveTo { x: 12; y: 19; }
+        LineTo { x: 12; y: 5; }
+
+        // Arrow head
+        MoveTo { x: 7; y: 10; }
+        LineTo { x: 12; y: 5; }
+        LineTo { x: 17; y: 10; }
+    }
+}
+
+export component IconFolder inherits Rectangle {
+    in property <color> icon-color: #5cb896;
+    width: 18px;
+    height: 18px;
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        stroke: root.icon-color;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+
+        // Folder body
+        MoveTo { x: 3; y: 7; }
+        LineTo { x: 3; y: 19; }
+        LineTo { x: 21; y: 19; }
+        LineTo { x: 21; y: 9; }
+        LineTo { x: 12; y: 9; }
+        LineTo { x: 10; y: 7; }
+        Close {}
+    }
+}
+
+export component IconTendril inherits Rectangle {
+    in property <color> icon-color: #5cb896;
+    width: 22px;
+    height: 22px;
+
+    // Curling vine stem
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        stroke: root.icon-color;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+
+        // Main vine — grows up from bottom, curls right
+        MoveTo { x: 6; y: 22; }
+        CubicTo { x: 6; y: 14; control-1-x: 6; control-1-y: 19; control-2-x: 6; control-2-y: 16; }
+        CubicTo { x: 14; y: 6; control-1-x: 6; control-1-y: 10; control-2-x: 9; control-2-y: 7; }
+
+        // Spiral curl at the tip
+        CubicTo { x: 19; y: 4; control-1-x: 16; control-1-y: 5; control-2-x: 18; control-2-y: 3.5; }
+        CubicTo { x: 17; y: 7; control-1-x: 20; control-1-y: 4.5; control-2-x: 19; control-2-y: 6.5; }
+    }
+
+    // Small leaf branching off
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        fill: root.icon-color.transparentize(60%);
+        stroke: root.icon-color;
+        stroke-width: 1.2px;
+        stroke-line-cap: round;
+
+        // Leaf shape — branches off to the right from mid-stem
+        MoveTo { x: 8; y: 13; }
+        CubicTo { x: 14; y: 10; control-1-x: 10; control-1-y: 11; control-2-x: 13; control-2-y: 10; }
+        CubicTo { x: 8; y: 13; control-1-x: 13; control-1-y: 12; control-2-x: 10; control-2-y: 13; }
+    }
+}

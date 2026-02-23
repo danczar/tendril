@@ -1,0 +1,181 @@
+import { Theme } from "theme.slint";
+import { IconPlus, IconFolder } from "icons.slint";
+
+export struct SearchResultData {
+    video-id: string,
+    title: string,
+    channel: string,
+    duration: string,
+    thumbnail: image,
+    exists: bool,
+}
+
+export component ResultRow inherits Rectangle {
+    in property <SearchResultData> data;
+    in property <bool> enqueued: false;
+    in property <bool> collapsing: false;
+    callback enqueue();
+    callback open-folder();
+
+    property <bool> hovered: touch.has-hover || add-touch.has-hover;
+
+    height: collapsing ? 0px : 130px;
+    opacity: collapsing ? 0 : 1;
+    clip: true;
+
+    animate height { duration: 300ms; easing: ease-out; }
+    animate opacity { duration: 250ms; easing: ease-out; }
+
+    // Card
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: 122px;
+        border-radius: Theme.radius-md;
+        clip: true;
+        background: Theme.bg-elevated;
+
+        // Card-level touch (behind everything)
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                if root.data.exists {
+                    root.open-folder();
+                } else {
+                    root.enqueue();
+                }
+            }
+        }
+
+        // Thumbnail with subtle zoom on hover
+        Image {
+            property <length> zoom: root.hovered ? 32px : 0px;
+            x: -zoom / 2;
+            y: -zoom / 2;
+            width: parent.width + zoom;
+            height: parent.height + zoom;
+            source: root.data.thumbnail;
+            image-fit: cover;
+
+            animate zoom { duration: 300ms; easing: ease-out; }
+        }
+
+        // Gradient overlay — pinned to bottom
+        Rectangle {
+            x: 0;
+            y: parent.height - self.height;
+            width: parent.width;
+            height: 72px;
+
+            background: @linear-gradient(180deg, #1b1a1700, #1b1a17dd 40%, #1b1a17f0);
+
+            VerticalLayout {
+                alignment: end;
+                padding-left: Theme.space-3;
+                padding-right: 52px;
+                padding-bottom: Theme.space-2;
+                spacing: 2px;
+
+                Text {
+                    text: root.data.title;
+                    color: Theme.text-primary;
+                    font-family: Theme.font-smallcaps;
+                    font-size: Theme.text-md;
+                    font-weight: 500;
+                    letter-spacing: 0.3px;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    spacing: 0;
+
+                    Text {
+                        text: root.data.channel;
+                        color: Theme.text-secondary;
+                        font-size: Theme.text-sm;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: root.data.duration != "" ? " \u{00b7} " : "";
+                        color: Theme.text-tertiary;
+                        font-size: Theme.text-sm;
+                    }
+
+                    Text {
+                        text: root.data.duration;
+                        color: Theme.text-tertiary;
+                        font-size: Theme.text-sm;
+                    }
+                }
+            }
+        }
+
+        // Action button — folder icon if already processed, plus icon if new
+        Rectangle {
+            x: parent.width - self.width - Theme.space-2;
+            y: parent.height - 72px + (72px - self.height) / 2;
+            width: root.hovered ? 44px : 28px;
+            height: root.hovered ? 32px : 28px;
+            border-radius: root.hovered ? Theme.radius-sm : Theme.radius-xs;
+            background: root.hovered
+                ? (add-touch.has-hover ? Theme.accent-hover : Theme.accent)
+                : #1b1a1766;
+
+            animate width { duration: 200ms; easing: ease-out; }
+            animate height { duration: 200ms; easing: ease-out; }
+            animate border-radius { duration: 200ms; easing: ease-out; }
+            animate background { duration: 200ms; easing: ease-out; }
+
+            if !root.data.exists: IconPlus {
+                property <length> icon-size: root.hovered ? 16px : 12px;
+                width: icon-size;
+                height: icon-size;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon-color: root.hovered ? Theme.bg-base : Theme.accent;
+
+                animate width { duration: 200ms; easing: ease-out; }
+                animate height { duration: 200ms; easing: ease-out; }
+                animate icon-color { duration: 200ms; easing: ease-out; }
+            }
+
+            if root.data.exists: IconFolder {
+                property <length> icon-size: root.hovered ? 16px : 12px;
+                width: icon-size;
+                height: icon-size;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon-color: root.hovered ? Theme.bg-base : Theme.accent;
+
+                animate width { duration: 200ms; easing: ease-out; }
+                animate height { duration: 200ms; easing: ease-out; }
+                animate icon-color { duration: 200ms; easing: ease-out; }
+            }
+
+            add-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    if root.data.exists {
+                        root.open-folder();
+                    } else {
+                        root.enqueue();
+                    }
+                }
+            }
+        }
+
+        // Accent border — appears on enqueued row
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: parent.border-radius;
+            border-width: 1.5px;
+            border-color: root.enqueued ? Theme.accent : transparent;
+            background: transparent;
+
+            animate border-color { duration: 150ms; easing: ease-out; }
+        }
+    }
+}
