@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 tendril-core = { path = "../tendril-core" }
-slint = "1.15"
+slint = { version = "~1.15", features = ["unstable-winit-030"] }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

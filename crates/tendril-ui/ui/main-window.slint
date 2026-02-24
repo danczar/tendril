@@ -25,6 +25,7 @@ export component MainWindow inherits Window {
     in property <[QueueItemData]> queue-items: [];
     in-out property <string> status-message: "Ready";
     in-out property <string> search-text: "";
+    in property <string> app-version: "";
 
     // ── Animation state ──
     in-out property <int> enqueued-index: -1;
@@ -47,6 +48,9 @@ export component MainWindow inherits Window {
     in-out property <string> deps-status: "";
     in-out property <bool> deps-all-installed: false;
 
+    // ── Drop state ──
+    in-out property <bool> drop-hovering: false;
+
     // ── Callbacks to Rust ──
     callback search(string);
     callback search-changed(string);
@@ -57,6 +61,7 @@ export component MainWindow inherits Window {
     callback download-deps();
     callback update-dep(string);
     callback browse-output-dir();
+    callback file-dropped(string);
 
     // ── Main layout ──
     VerticalLayout {
@@ -176,7 +181,7 @@ export component MainWindow inherits Window {
                     height: 200px;
 
                     Text {
-                        text: "Search for a song to get started";
+                        text: "Search for a song or drop a file to get started";
                         color: Theme.text-tertiary;
                         font-size: Theme.text-md;
                         horizontal-alignment: center;
@@ -246,7 +251,7 @@ export component MainWindow inherits Window {
                 }
 
                 Text {
-                    text: "v0.1.0";
+                    text: "v" + root.app-version;
                     color: Theme.text-tertiary;
                     font-size: Theme.text-xs;
                     vertical-alignment: center;
@@ -279,5 +284,22 @@ export component MainWindow inherits Window {
         download-deps => { root.download-deps(); }
         update-dep(name) => { root.update-dep(name); }
         close => { root.deps-visible = false; }
+    }
+
+    // ── Drop hover overlay ──
+    if root.drop-hovering: Rectangle {
+        background: Theme.accent.transparentize(90%);
+        border-width: 2px;
+        border-color: Theme.accent;
+        border-radius: Theme.radius-md;
+
+        Text {
+            text: "Drop audio file to process";
+            color: Theme.accent;
+            font-size: Theme.text-lg;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
     }
 }

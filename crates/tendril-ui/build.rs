@@ -5,6 +5,9 @@ fn main() {
     {
         let mut res = winres::WindowsResource::new();
         res.set_icon("ui/tendril.ico");
+        res.set("ProductName", "Tendril");
+        res.set("FileDescription", "Tendril — Audio Stem Separation");
+        res.set("ProductVersion", env!("CARGO_PKG_VERSION"));
         res.compile().unwrap();
     }
 }

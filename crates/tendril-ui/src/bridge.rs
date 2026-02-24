@@ -17,7 +17,8 @@ pub fn connect_callbacks(window: &MainWindow, state: SharedState, rt: Handle) {
     connect_open_folder(window, state.clone());
     connect_settings(window, state.clone());
     connect_deps(window, state.clone(), rt.clone());
-    connect_browse_output(window, state);
+    connect_browse_output(window, state.clone());
+    connect_file_dropped(window, state);
 }
 
 /// Populate initial dependency status on the UI.
@@ -591,6 +592,25 @@ fn connect_browse_output(window: &MainWindow, state: SharedState) {
                 });
             }
         });
+    });
+}
+
+fn connect_file_dropped(window: &MainWindow, state: SharedState) {
+    let weak = window.as_weak();
+    window.on_file_dropped(move |path_str| {
+        let path = std::path::PathBuf::from(path_str.as_str());
+        if !path.is_file() {
+            tracing::warn!("Dropped path is not a file: {}", path.display());
+            return;
+        }
+        tracing::info!("Enqueuing dropped file: {}", path.display());
+        let mut s = state.lock().unwrap();
+        let source = tendril_core::pipeline::job::JobSource::LocalFile { path };
+        s.queue.enqueue(source);
+        if let Some(w) = weak.upgrade() {
+            let model = crate::models::queue_items_model(&s.queue, &s.thumbnail_cache);
+            w.set_queue_items(model);
+        }
     });
 }
 

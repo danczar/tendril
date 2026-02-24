@@ -14,7 +14,7 @@ fn main() -> Result<()> {
         )
         .init();
 
-    tracing::info!("Starting Tendril");
+    tracing::info!("Starting Tendril v{}", env!("CARGO_PKG_VERSION"));
 
     #[cfg(target_os = "macos")]
     set_macos_dock_icon();
@@ -31,6 +31,7 @@ fn main() -> Result<()> {
 
     // Create UI
     let window = MainWindow::new()?;
+    window.set_app_version(env!("CARGO_PKG_VERSION").into());
 
     // Set initial state from config
     {
@@ -55,6 +56,34 @@ fn main() -> Result<()> {
 
     // Wire callbacks
     bridge::connect_callbacks(&window, shared.clone(), rt.handle().clone());
+
+    // Hook winit events for file drag-and-drop
+    {
+        use slint::winit_030::WinitWindowAccessor;
+        let weak = window.as_weak();
+        window.window().on_winit_window_event(move |_win, event| {
+            match event {
+                slint::winit_030::winit::event::WindowEvent::HoveredFile(_) => {
+                    if let Some(w) = weak.upgrade() {
+                        w.set_drop_hovering(true);
+                    }
+                }
+                slint::winit_030::winit::event::WindowEvent::HoveredFileCancelled => {
+                    if let Some(w) = weak.upgrade() {
+                        w.set_drop_hovering(false);
+                    }
+                }
+                slint::winit_030::winit::event::WindowEvent::DroppedFile(path) => {
+                    if let Some(w) = weak.upgrade() {
+                        w.set_drop_hovering(false);
+                        w.invoke_file_dropped(path.to_string_lossy().to_string().into());
+                    }
+                }
+                _ => return slint::winit_030::EventResult::Propagate,
+            }
+            slint::winit_030::EventResult::Propagate
+        });
+    }
 
     // Populate initial dependency status
     bridge::init_dep_status(&window, &shared);
