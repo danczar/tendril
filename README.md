@@ -79,13 +79,13 @@ If a song has already been processed, the result shows a folder icon instead of 
 
 ### Requirements
 
-- **Rust** 1.75+ ([rustup.rs](https://rustup.rs))
+- **Rust** 1.77+ ([rustup.rs](https://rustup.rs))
 - **Platform SDK**: Xcode Command Line Tools on macOS, Visual Studio Build Tools on Windows
 
 ### Build
 
 ```sh
-git clone https://github.com/user/tendril.git
+git clone https://github.com/danczar/tendril.git
 cd tendril
 cargo build --release
 ```
