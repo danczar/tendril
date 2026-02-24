@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::config::OutputFormat;
 use crate::error::AudioError;
 
 /// Create an instrumental mix by combining drums + bass + other stems.
@@ -9,6 +10,7 @@ pub async fn create_instrumental(
     bass: &Path,
     other: &Path,
     output_path: &Path,
+    format: OutputFormat,
 ) -> Result<PathBuf, AudioError> {
     let output = tokio::process::Command::new(ffmpeg_bin)
         .arg("-y")
@@ -22,6 +24,7 @@ pub async fn create_instrumental(
             "-filter_complex",
             "amix=inputs=3:duration=longest:normalize=0",
         ])
+        .args(super::convert::codec_args(format))
         .arg(output_path)
         .output()
         .await

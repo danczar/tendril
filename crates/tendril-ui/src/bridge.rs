@@ -18,7 +18,7 @@ pub fn connect_callbacks(window: &MainWindow, state: SharedState, rt: Handle) {
     connect_settings(window, state.clone());
     connect_deps(window, state.clone(), rt.clone());
     connect_browse_output(window, state.clone());
-    connect_file_dropped(window, state);
+    connect_file_dropped(window, state, rt);
 }
 
 /// Populate initial dependency status on the UI.
@@ -595,7 +595,7 @@ fn connect_browse_output(window: &MainWindow, state: SharedState) {
     });
 }
 
-fn connect_file_dropped(window: &MainWindow, state: SharedState) {
+fn connect_file_dropped(window: &MainWindow, state: SharedState, rt: Handle) {
     let weak = window.as_weak();
     window.on_file_dropped(move |path_str| {
         let path = std::path::PathBuf::from(path_str.as_str());
@@ -604,14 +604,60 @@ fn connect_file_dropped(window: &MainWindow, state: SharedState) {
             return;
         }
         tracing::info!("Enqueuing dropped file: {}", path.display());
+        let cache_key = path.to_string_lossy().to_string();
         let mut s = state.lock().unwrap();
-        let source = tendril_core::pipeline::job::JobSource::LocalFile { path };
+        let source = tendril_core::pipeline::job::JobSource::LocalFile { path: path.clone() };
         s.queue.enqueue(source);
         if let Some(w) = weak.upgrade() {
             let model = crate::models::queue_items_model(&s.queue, &s.thumbnail_cache);
             w.set_queue_items(model);
         }
+
+        // Extract album art in background
+        let ffmpeg_bin = resolve_ffmpeg(&s.dirs);
+        let state = state.clone();
+        let weak = weak.clone();
+        rt.spawn(async move {
+            if let Some(art) = extract_album_art(&ffmpeg_bin, &path).await {
+                {
+                    let mut s = state.lock().unwrap();
+                    s.thumbnail_cache.insert(cache_key, art);
+                }
+                // UI will pick it up on next progress timer tick
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = weak.upgrade() {
+                        let s = state.lock().unwrap();
+                        let model = crate::models::queue_items_model(&s.queue, &s.thumbnail_cache);
+                        w.set_queue_items(model);
+                    }
+                });
+            }
+        });
     });
+}
+
+/// Extract embedded album art from an audio file using ffmpeg.
+async fn extract_album_art(ffmpeg_bin: &std::path::Path, input: &std::path::Path) -> Option<Vec<u8>> {
+    let output = tokio::process::Command::new(ffmpeg_bin)
+        .arg("-i")
+        .arg(input)
+        .arg("-an")
+        .arg("-vcodec")
+        .arg("copy")
+        .arg("-f")
+        .arg("image2pipe")
+        .arg("pipe:1")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()?;
+
+    if output.status.success() && !output.stdout.is_empty() {
+        Some(output.stdout)
+    } else {
+        None
+    }
 }
 
 /// Convert dependency statuses to a Slint model.

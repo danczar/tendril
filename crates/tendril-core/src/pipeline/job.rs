@@ -38,6 +38,14 @@ impl JobSource {
             JobSource::LocalFile { .. } => None,
         }
     }
+
+    /// Key for thumbnail cache lookups.
+    pub fn thumbnail_key(&self) -> String {
+        match self {
+            JobSource::Youtube { video_id, .. } => video_id.clone(),
+            JobSource::LocalFile { path } => path.to_string_lossy().to_string(),
+        }
+    }
 }
 
 /// Compute the output folder name for a job.

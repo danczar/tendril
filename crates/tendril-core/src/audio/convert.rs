@@ -3,6 +3,16 @@ use std::path::{Path, PathBuf};
 use crate::config::OutputFormat;
 use crate::error::AudioError;
 
+/// Codec arguments for each output format.
+pub(crate) fn codec_args(format: OutputFormat) -> &'static [&'static str] {
+    match format {
+        OutputFormat::Wav => &[],
+        OutputFormat::Flac => &["-c:a", "flac", "-compression_level", "0"],
+        OutputFormat::Mp3 => &["-c:a", "libmp3lame", "-V", "0"],
+        OutputFormat::Aac => &["-c:a", "aac", "-b:a", "320k"],
+    }
+}
+
 /// Convert an audio file to the target format using ffmpeg.
 pub async fn convert(
     ffmpeg_bin: &Path,
@@ -15,13 +25,7 @@ pub async fn convert(
         .and_then(|s| s.to_str())
         .unwrap_or("output");
 
-    let (ext, codec_args): (&str, &[&str]) = match format {
-        OutputFormat::Wav => ("wav", &[]),
-        OutputFormat::Flac => ("flac", &["-c:a", "flac", "-compression_level", "0"]),
-        OutputFormat::Mp3 => ("mp3", &["-c:a", "libmp3lame", "-V", "0"]),
-        OutputFormat::Aac => ("m4a", &["-c:a", "aac", "-vbr", "5"]),
-    };
-
+    let ext = format.extension();
     let output_path = output_dir.join(format!("{stem}.{ext}"));
 
     // If target is WAV and input is already WAV, just copy
@@ -38,7 +42,8 @@ pub async fn convert(
         .arg("-y")
         .arg("-i")
         .arg(input)
-        .args(codec_args)
+        .arg("-vn")
+        .args(codec_args(format))
         .arg(&output_path)
         .output()
         .await
@@ -64,13 +69,6 @@ pub async fn convert_to(
     format: OutputFormat,
     output_path: &Path,
 ) -> Result<PathBuf, AudioError> {
-    let codec_args: &[&str] = match format {
-        OutputFormat::Wav => &[],
-        OutputFormat::Flac => &["-c:a", "flac", "-compression_level", "0"],
-        OutputFormat::Mp3 => &["-c:a", "libmp3lame", "-V", "0"],
-        OutputFormat::Aac => &["-c:a", "aac", "-vbr", "5"],
-    };
-
     if format == OutputFormat::Wav
         && input.extension().and_then(|e| e.to_str()) == Some("wav")
     {
@@ -84,7 +82,8 @@ pub async fn convert_to(
         .arg("-y")
         .arg("-i")
         .arg(input)
-        .args(codec_args)
+        .arg("-vn")
+        .args(codec_args(format))
         .arg(output_path)
         .output()
         .await

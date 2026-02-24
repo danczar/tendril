@@ -145,12 +145,7 @@ pub async fn run(
     // ── Stage 4: Create instrumental mix ──
     send(PipelineStage::Mixing, 0.0, "Creating instrumental mix...");
 
-    let ext = match ctx.output_format {
-        OutputFormat::Wav => "wav",
-        OutputFormat::Flac => "flac",
-        OutputFormat::Mp3 => "mp3",
-        OutputFormat::Aac => "m4a",
-    };
+    let ext = ctx.output_format.extension();
     let instrumental_path = final_dir.join(format!("instrumental.{ext}"));
 
     // ── Preserve full mix (optional) ──
@@ -175,6 +170,7 @@ pub async fn run(
         &stems.bass,
         &stems.other,
         &instrumental_path,
+        ctx.output_format,
     )
     .await
     .map_err(|e| PipelineError::StageFailed {

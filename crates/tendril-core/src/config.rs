@@ -47,6 +47,18 @@ pub enum ModelVariant {
     Htdemucs,
 }
 
+impl OutputFormat {
+    /// File extension for this format.
+    pub fn extension(&self) -> &'static str {
+        match self {
+            OutputFormat::Wav => "wav",
+            OutputFormat::Flac => "flac",
+            OutputFormat::Mp3 => "mp3",
+            OutputFormat::Aac => "m4a",
+        }
+    }
+}
+
 impl ModelVariant {
     /// Map to demucs model name for the Python CLI.
     pub fn model_name(&self) -> &'static str {

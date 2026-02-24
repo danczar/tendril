@@ -62,10 +62,8 @@ pub fn queue_items_model(
         .map(|job| {
             let progress = job.progress_rx.borrow();
             let (stage_label, stage_color) = stage_display(&progress.stage);
-            let thumbnail = job
-                .source
-                .video_id()
-                .and_then(|vid| thumbnail_cache.get(vid))
+            let thumbnail = thumbnail_cache
+                .get(&job.source.thumbnail_key())
                 .and_then(|bytes| decode_image_bytes(bytes))
                 .unwrap_or_default();
             QueueItemData {
