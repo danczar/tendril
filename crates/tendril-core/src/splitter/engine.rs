@@ -28,6 +28,7 @@ pub async fn separate(
     gpu_backend: GpuBackend,
     python_bin: &Path,
     models_dir: &Path,
+    bin_dir: &Path,
     progress_tx: Option<Arc<watch::Sender<ProgressEvent>>>,
     cancel_rx: Option<watch::Receiver<bool>>,
 ) -> Result<StemOutput, SplitterError> {
@@ -54,6 +55,17 @@ pub async fn separate(
     // Point torch hub cache into our managed data directory so models
     // don't scatter into the user's home folder.
     cmd.env("TORCH_HOME", models_dir);
+
+    // Put our managed bin_dir (ffmpeg, ffprobe) on PATH so demucs can
+    // use ffmpeg/ffprobe for audio loading without a system install.
+    if bin_dir.exists() {
+        let mut path = std::ffi::OsString::from(bin_dir);
+        if let Some(existing) = std::env::var_os("PATH") {
+            path.push(if cfg!(windows) { ";" } else { ":" });
+            path.push(existing);
+        }
+        cmd.env("PATH", path);
+    }
 
     // Device selection — Auto picks the best available accelerator per platform
     match gpu_backend {

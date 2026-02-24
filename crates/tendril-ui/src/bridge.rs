@@ -294,7 +294,19 @@ async fn fetch_thumbnails(
         }
     }
 
-    // Apply to UI
+    // Decode images off the UI thread (JPEG decoding is CPU-intensive).
+    // slint::Image is !Send, so pass raw RGBA pixels and create Images on the UI thread.
+    let decoded: Vec<Option<(Vec<u8>, u32, u32)>> =
+        tokio::task::spawn_blocking(move || {
+            thumbnail_bytes
+                .into_iter()
+                .map(|bytes| crate::models::decode_to_rgba(bytes.as_deref()))
+                .collect()
+        })
+        .await
+        .unwrap_or_default();
+
+    // Apply to UI (cheap — just wrapping pixel buffers into Slint Images)
     let weak = weak.clone();
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(window) = weak.upgrade() {
@@ -305,14 +317,13 @@ async fn fetch_thumbnails(
             else {
                 return;
             };
-            for (i, bytes) in thumbnail_bytes.into_iter().enumerate() {
+            for (i, pixels) in decoded.into_iter().enumerate() {
                 let row = start + i;
-                if let Some(data) = bytes {
-                    if let Some(img) = crate::models::decode_image_bytes(&data) {
-                        if let Some(mut item) = vec_model.row_data(row) {
-                            item.thumbnail = img;
-                            vec_model.set_row_data(row, item);
-                        }
+                if let Some((rgba, w, h)) = pixels {
+                    let img = crate::models::rgba_to_slint_image(&rgba, w, h);
+                    if let Some(mut item) = vec_model.row_data(row) {
+                        item.thumbnail = img;
+                        vec_model.set_row_data(row, item);
                     }
                 }
             }
