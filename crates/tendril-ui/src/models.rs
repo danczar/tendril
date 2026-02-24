@@ -41,15 +41,22 @@ pub async fn fetch_thumbnail_bytes(url: &str) -> Option<Vec<u8>> {
 
 /// Decode raw image bytes (JPEG/PNG) into a Slint Image.
 pub fn decode_image_bytes(data: &[u8]) -> Option<Image> {
-    let img = image::load_from_memory(data).ok()?;
+    let (rgba, w, h) = decode_to_rgba(Some(data))?;
+    Some(rgba_to_slint_image(&rgba, w, h))
+}
+
+/// Decode raw image bytes to RGBA pixel data (Send-safe, for use off the UI thread).
+pub fn decode_to_rgba(data: Option<&[u8]>) -> Option<(Vec<u8>, u32, u32)> {
+    let img = image::load_from_memory(data?).ok()?;
     let rgba = img.to_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
-    let buf = SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-        rgba.as_raw(),
-        w,
-        h,
-    );
-    Some(Image::from_rgba8(buf))
+    Some((rgba.into_raw(), w, h))
+}
+
+/// Convert raw RGBA pixel data into a Slint Image (cheap, UI-thread safe).
+pub fn rgba_to_slint_image(rgba: &[u8], w: u32, h: u32) -> Image {
+    let buf = SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(rgba, w, h);
+    Image::from_rgba8(buf)
 }
 
 /// Convert queue jobs into a Slint model.

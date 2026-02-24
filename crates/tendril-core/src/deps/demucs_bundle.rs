@@ -165,7 +165,7 @@ pub async fn ensure(
     tracing::info!("Installing demucs...");
 
     let pip_demucs = tokio::process::Command::new(&python_bin)
-        .args(["-m", "pip", "install", "--no-input", "demucs"])
+        .args(["-m", "pip", "install", "--no-input", "demucs", "soundfile"])
         .output()
         .await
         .map_err(DependencyError::Extract)?;
@@ -207,7 +207,7 @@ async fn install_demucs(
     }
 
     let output = tokio::process::Command::new(python_bin)
-        .args(["-m", "pip", "install", "--no-input", "demucs"])
+        .args(["-m", "pip", "install", "--no-input", "demucs", "soundfile"])
         .output()
         .await
         .map_err(DependencyError::Extract)?;
@@ -261,41 +261,36 @@ pub async fn update_demucs(dirs: &AppDirs) -> Result<(), DependencyError> {
     Ok(())
 }
 
-/// Install PyTorch (with CUDA support when available) and torchcodec.
+/// Install PyTorch and torchcodec.
 ///
-/// On Windows/Linux, probes `nvidia-smi` to detect CUDA. If found, installs
-/// the CUDA-enabled PyTorch from the official PyTorch wheel index. Falls back
-/// to CPU-only if CUDA install fails or no GPU is detected.
+/// On Windows/Linux, installs CUDA-enabled PyTorch which automatically falls
+/// back to CPU if no GPU is present. On macOS, installs the default (MPS-capable)
+/// build from PyPI.
 async fn install_torch(
     python_bin: &std::path::Path,
 ) -> Result<(), DependencyError> {
-    let cuda_major = detect_cuda_major().await;
-
-    let success = if let Some(major) = cuda_major {
-        let index_url = cuda_index_url(major);
-        tracing::info!("CUDA {major}.x detected — installing GPU-enabled PyTorch from {index_url}");
-
+    if cfg!(target_os = "macos") {
+        // macOS: install from PyPI (includes MPS support on Apple Silicon)
+        tracing::info!("Installing PyTorch from PyPI (macOS)");
         let output = tokio::process::Command::new(python_bin)
-            .args(["-m", "pip", "install", "--no-input", "torch", "--index-url", index_url])
+            .args(["-m", "pip", "install", "--no-input", "torch"])
             .output()
             .await
             .map_err(DependencyError::Extract)?;
 
-        if output.status.success() {
-            true
-        } else {
+        if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            tracing::warn!("CUDA PyTorch install failed, falling back to CPU: {stderr}");
-            false
+            return Err(DependencyError::GitHubApi {
+                message: format!("pip install torch failed: {stderr}"),
+            });
         }
     } else {
-        tracing::info!("No CUDA detected — installing CPU PyTorch");
-        false
-    };
+        // Windows/Linux: install CUDA-enabled PyTorch (falls back to CPU automatically)
+        let index_url = "https://download.pytorch.org/whl/cu126";
+        tracing::info!("Installing CUDA-enabled PyTorch from {index_url}");
 
-    if !success {
         let output = tokio::process::Command::new(python_bin)
-            .args(["-m", "pip", "install", "--no-input", "torch"])
+            .args(["-m", "pip", "install", "--no-input", "torch", "--index-url", index_url])
             .output()
             .await
             .map_err(DependencyError::Extract)?;
@@ -323,37 +318,6 @@ async fn install_torch(
     }
 
     Ok(())
-}
-
-/// Detect CUDA availability by running `nvidia-smi`.
-/// Returns the CUDA major version (e.g. 12 for CUDA 12.x) if available.
-async fn detect_cuda_major() -> Option<u32> {
-    if cfg!(target_os = "macos") {
-        return None;
-    }
-
-    let output = tokio::process::Command::new("nvidia-smi")
-        .output()
-        .await
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let text = String::from_utf8_lossy(&output.stdout);
-    let re = regex::Regex::new(r"CUDA Version:\s+(\d+)").ok()?;
-    let caps = re.captures(&text)?;
-    caps[1].parse().ok()
-}
-
-/// Map CUDA major version to the appropriate PyTorch wheel index.
-fn cuda_index_url(cuda_major: u32) -> &'static str {
-    if cuda_major >= 12 {
-        "https://download.pytorch.org/whl/cu124"
-    } else {
-        "https://download.pytorch.org/whl/cu118"
-    }
 }
 
 /// Run `python --version` or similar to capture version string.

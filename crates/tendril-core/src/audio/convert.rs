@@ -8,7 +8,7 @@ pub(crate) fn codec_args(format: OutputFormat) -> &'static [&'static str] {
     match format {
         OutputFormat::Wav => &[],
         OutputFormat::Flac => &["-c:a", "flac", "-compression_level", "0"],
-        OutputFormat::Mp3 => &["-c:a", "libmp3lame", "-V", "0"],
+        OutputFormat::Mp3 => &["-c:a", "libmp3lame", "-q:a", "0"],
         OutputFormat::Aac => &["-c:a", "aac", "-b:a", "320k"],
     }
 }

@@ -83,6 +83,12 @@ pub async fn run(
             .unwrap_or("unknown"),
     );
 
+    let bin_dir = ctx
+        .ffmpeg_bin
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+
     let stems = crate::splitter::engine::separate(
         &audio_path,
         &stem_dir,
@@ -90,6 +96,7 @@ pub async fn run(
         ctx.gpu_backend,
         &ctx.python_bin,
         &ctx.models_dir,
+        &bin_dir,
         Some(progress_tx.clone()),
         Some(cancel_rx.clone()),
     )
