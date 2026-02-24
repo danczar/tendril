@@ -12,6 +12,7 @@ export component DepManagerModal inherits Rectangle {
     in-out property <bool> showing;
     in property <[DepItemData]> dep-items: [];
     in-out property <bool> downloading: false;
+    in-out property <bool> all-installed: false;
     in-out property <float> progress: 0.0;
     in-out property <string> progress-status: "";
     callback download-deps();
@@ -178,13 +179,15 @@ export component DepManagerModal inherits Rectangle {
                 // Download / progress area
                 if !root.downloading: Rectangle {
                     height: 40px;
-                    background: dl-touch.has-hover ? Theme.accent-hover : Theme.accent;
+                    background: root.all-installed ? Theme.bg-surface
+                              : dl-touch.has-hover ? Theme.accent-hover
+                              : Theme.accent;
                     border-radius: Theme.radius-sm;
                     animate background { duration: Theme.duration-fast; easing: ease-out; }
 
                     Text {
-                        text: "Download Dependencies";
-                        color: Theme.bg-base;
+                        text: root.all-installed ? "All dependencies installed" : "Download Dependencies";
+                        color: root.all-installed ? Theme.text-tertiary : Theme.bg-base;
                         font-size: Theme.text-base;
                         font-weight: 600;
                         horizontal-alignment: center;
@@ -192,8 +195,12 @@ export component DepManagerModal inherits Rectangle {
                     }
 
                     dl-touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.download-deps(); }
+                        mouse-cursor: root.all-installed ? default : pointer;
+                        clicked => {
+                            if !root.all-installed {
+                                root.download-deps();
+                            }
+                        }
                     }
                 }
 

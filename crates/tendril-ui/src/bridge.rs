@@ -25,8 +25,9 @@ pub fn init_dep_status(window: &MainWindow, state: &SharedState) {
     let s = state.lock().unwrap();
     let mgr = tendril_core::deps::DependencyManager::new(&s.dirs);
     let statuses = mgr.check_status();
-    let model = dep_status_model(&statuses);
-    window.set_dep_items(model);
+    let all_installed = statuses.iter().all(|s| s.state != tendril_core::deps::DepState::Missing);
+    window.set_dep_items(dep_status_model(&statuses));
+    window.set_deps_all_installed(all_installed);
 }
 
 /// Start the background pipeline runner that processes queued jobs.
@@ -140,7 +141,6 @@ pub fn start_progress_timer(window: &MainWindow, state: SharedState) {
             }
         },
     );
-    // Keep timer alive for the lifetime of the app
     std::mem::forget(timer);
 }
 
@@ -324,9 +324,14 @@ fn connect_enqueue(window: &MainWindow, state: SharedState) {
     window.on_enqueue_result(move |idx| {
         let mut state = state.lock().unwrap();
         if let Some(result) = state.search_results.get(idx as usize) {
+            let title = if result.channel.is_empty() {
+                result.title.clone()
+            } else {
+                format!("{} - {}", result.channel, result.title)
+            };
             let source = tendril_core::pipeline::job::JobSource::Youtube {
                 video_id: result.video_id.clone(),
-                title: result.title.clone(),
+                title,
             };
             let id = state.queue.enqueue(source);
             tracing::info!("Enqueued job {id}");
@@ -490,10 +495,12 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
                 match result {
                     Ok(()) => {
                         let statuses = mgr.check_status();
+                        let all_installed = statuses.iter().all(|s| s.state != tendril_core::deps::DepState::Missing);
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(w) = weak.upgrade() {
                                 w.set_deps_downloading(false);
                                 w.set_dep_items(dep_status_model(&statuses));
+                                w.set_deps_all_installed(all_installed);
                                 w.set_status_message("Ready".into());
                             }
                         });

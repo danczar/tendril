@@ -4,4 +4,6 @@
 *~
 .DS_Store
 rustypipe_cache.json
+rustypipe_reports/
 ARCHITECTURE.md
+*.icns

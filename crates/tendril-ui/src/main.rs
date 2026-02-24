@@ -113,7 +113,7 @@ fn set_macos_dock_icon() {
     use objc2_app_kit::{NSApplication, NSImage};
     use objc2_foundation::NSData;
 
-    static ICON_PNG: &[u8] = include_bytes!("../ui/tendril-icon.png");
+    static ICON_PNG: &[u8] = include_bytes!("../ui/tendril-icon-new.png");
 
     let mtm = MainThreadMarker::new().expect("must be called on main thread");
     let app = NSApplication::sharedApplication(mtm);

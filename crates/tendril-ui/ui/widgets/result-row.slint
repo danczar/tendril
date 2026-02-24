@@ -87,27 +87,14 @@ export component ResultRow inherits Rectangle {
                     overflow: elide;
                 }
 
-                HorizontalLayout {
-                    spacing: 0;
-
-                    Text {
-                        text: root.data.channel;
-                        color: Theme.text-secondary;
-                        font-size: Theme.text-sm;
-                        overflow: elide;
-                    }
-
-                    Text {
-                        text: root.data.duration != "" ? " \u{00b7} " : "";
-                        color: Theme.text-tertiary;
-                        font-size: Theme.text-sm;
-                    }
-
-                    Text {
-                        text: root.data.duration;
-                        color: Theme.text-tertiary;
-                        font-size: Theme.text-sm;
-                    }
+                Text {
+                    text: root.data.channel != "" && root.data.duration != ""
+                        ? root.data.channel + " \u{00b7} " + root.data.duration
+                        : root.data.channel != "" ? root.data.channel
+                        : root.data.duration;
+                    color: Theme.text-secondary;
+                    font-size: Theme.text-xs;
+                    overflow: elide;
                 }
             }
         }

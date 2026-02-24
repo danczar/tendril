@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="crates/tendril-ui/ui/tendril-icon.svg" width="128" height="128" alt="Tendril">
+  <img src="crates/tendril-ui/ui/tendril-icon-128.png" width="128" height="128" alt="Tendril">
 </p>
 
 <h1 align="center">Tendril</h1>

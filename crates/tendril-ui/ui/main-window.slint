@@ -11,7 +11,6 @@ export { SearchResultData, QueueItemData, DepItemData }
 
 export component MainWindow inherits Window {
     title: "";
-    icon: @image-url("tendril-icon.png");
     preferred-width: 900px;
     preferred-height: 680px;
 
@@ -46,6 +45,7 @@ export component MainWindow inherits Window {
     in-out property <bool> deps-downloading: false;
     in-out property <float> deps-progress: 0.0;
     in-out property <string> deps-status: "";
+    in-out property <bool> deps-all-installed: false;
 
     // ── Callbacks to Rust ──
     callback search(string);
@@ -275,6 +275,7 @@ export component MainWindow inherits Window {
         downloading: root.deps-downloading;
         progress: root.deps-progress;
         progress-status: root.deps-status;
+        all-installed: root.deps-all-installed;
         download-deps => { root.download-deps(); }
         update-dep(name) => { root.update-dep(name); }
         close => { root.deps-visible = false; }

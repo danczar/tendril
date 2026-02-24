@@ -94,6 +94,9 @@ fn stage_display(stage: &PipelineStage) -> (&'static str, Color) {
 }
 
 fn format_duration(secs: u32) -> String {
+    if secs == 0 {
+        return String::new();
+    }
     let minutes = secs / 60;
     let seconds = secs % 60;
     format!("{minutes}:{seconds:02}")
