@@ -48,6 +48,8 @@ export component MainWindow inherits Window {
     in-out property <float> deps-progress: 0.0;
     in-out property <string> deps-status: "";
     in-out property <bool> deps-all-installed: false;
+    in-out property <bool> deps-checking: false;
+    in-out property <bool> deps-any-updates: false;
 
     // ── Drop state ──
     in-out property <bool> drop-hovering: false;
@@ -61,6 +63,8 @@ export component MainWindow inherits Window {
     callback settings-changed();
     callback download-deps();
     callback update-dep(string);
+    callback update-all-deps();
+    callback check-deps();
     callback browse-output-dir();
     callback file-dropped(string);
 
@@ -114,7 +118,10 @@ export component MainWindow inherits Window {
 
                     deps-touch := TouchArea {
                         mouse-cursor: pointer;
-                        clicked => { root.deps-visible = !root.deps-visible; }
+                        clicked => {
+                            root.deps-visible = !root.deps-visible;
+                            if root.deps-visible { root.check-deps(); }
+                        }
                     }
                 }
 
@@ -282,8 +289,11 @@ export component MainWindow inherits Window {
         progress: root.deps-progress;
         progress-status: root.deps-status;
         all-installed: root.deps-all-installed;
+        checking: root.deps-checking;
+        any-updates: root.deps-any-updates;
         download-deps => { root.download-deps(); }
         update-dep(name) => { root.update-dep(name); }
+        update-all-deps => { root.update-all-deps(); }
         close => { root.deps-visible = false; }
     }
 

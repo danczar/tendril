@@ -4,6 +4,7 @@ import { IconClose, IconUpdate } from "icons.slint";
 export struct DepItemData {
     name: string,
     version: string,
+    latest-version: string,
     status: string,         // "installed", "system", "missing"
     update-available: bool,
 }
@@ -13,10 +14,13 @@ export component DepManagerModal inherits Rectangle {
     in property <[DepItemData]> dep-items: [];
     in-out property <bool> downloading: false;
     in-out property <bool> all-installed: false;
+    in-out property <bool> checking: false;
+    in-out property <bool> any-updates: false;
     in-out property <float> progress: 0.0;
     in-out property <string> progress-status: "";
     callback download-deps();
     callback update-dep(string);
+    callback update-all-deps();
     callback close();
 
     width: 100%;
@@ -139,10 +143,14 @@ export component DepManagerModal inherits Rectangle {
                             // Version or status label
                             Text {
                                 text: dep.status == "missing" ? "Not installed"
+                                    : dep.update-available && dep.latest-version != ""
+                                        ? dep.version + " → " + dep.latest-version
                                     : dep.status == "system" ? dep.version != "" ? dep.version + " (system)" : "System"
                                     : dep.version != "" ? dep.version
                                     : "Installed";
-                                color: dep.status == "missing" ? Theme.stage-error : Theme.text-tertiary;
+                                color: dep.status == "missing" ? Theme.stage-error
+                                     : dep.update-available ? Theme.stage-download
+                                     : Theme.text-tertiary;
                                 font-size: Theme.text-sm;
                                 vertical-alignment: center;
                             }
@@ -170,10 +178,40 @@ export component DepManagerModal inherits Rectangle {
                     }
                 }
 
+                // Checking for updates indicator
+                if root.checking: Text {
+                    text: "Checking for updates...";
+                    color: Theme.text-tertiary;
+                    font-size: Theme.text-xs;
+                    horizontal-alignment: center;
+                }
+
                 // Divider
                 Rectangle {
                     height: 1px;
                     background: Theme.border-default;
+                }
+
+                // Update All button (only when updates available)
+                if root.any-updates && !root.downloading: Rectangle {
+                    height: 40px;
+                    background: update-all-touch.has-hover ? Theme.stage-download.transparentize(20%) : Theme.stage-download;
+                    border-radius: Theme.radius-sm;
+                    animate background { duration: Theme.duration-fast; easing: ease-out; }
+
+                    Text {
+                        text: "Update All";
+                        color: Theme.bg-base;
+                        font-size: Theme.text-base;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    update-all-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.update-all-deps(); }
+                    }
                 }
 
                 // Download / progress area

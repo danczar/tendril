@@ -31,6 +31,28 @@ impl DependencyManager {
     pub async fn ensure_lightweight(&self) -> Result<(), DependencyError> {
         self.ensure_ffmpeg().await?;
         self.ensure_ytdlp().await?;
+
+        // Record versions if not already saved
+        let mut versions = versions::InstalledVersions::load(&self.dirs.data_dir);
+        let mut changed = false;
+        if versions.ytdlp.is_none() {
+            if let Some(v) = query_ytdlp_version(&self.dirs).await {
+                versions.ytdlp = Some(v);
+                changed = true;
+            }
+        }
+        if versions.ffmpeg.is_none() {
+            let (ver, source) = query_ffmpeg_version(&self.dirs).await;
+            if ver.is_some() {
+                versions.ffmpeg = ver;
+                versions.ffmpeg_source = source;
+                changed = true;
+            }
+        }
+        if changed {
+            let _ = versions.save(&self.dirs.data_dir);
+        }
+
         Ok(())
     }
 

@@ -17,6 +17,8 @@ pub fn connect_callbacks(window: &MainWindow, state: SharedState, rt: Handle) {
     connect_open_folder(window, state.clone());
     connect_settings(window, state.clone());
     connect_deps(window, state.clone(), rt.clone());
+    connect_check_deps(window, state.clone(), rt.clone());
+    connect_update_all_deps(window, state.clone(), rt.clone());
     connect_browse_output(window, state.clone());
     connect_file_dropped(window, state, rt);
 }
@@ -577,6 +579,92 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
     }
 }
 
+fn connect_check_deps(window: &MainWindow, state: SharedState, rt: Handle) {
+    let weak = window.as_weak();
+    window.on_check_deps(move || {
+        let state = state.clone();
+        let weak = weak.clone();
+
+        if let Some(w) = weak.upgrade() {
+            w.set_deps_checking(true);
+        }
+
+        rt.spawn(async move {
+            let dirs = { state.lock().unwrap().dirs.clone() };
+            let mgr = tendril_core::deps::DependencyManager::new(&dirs);
+            let statuses = mgr.check_updates().await;
+            let any_updates = statuses.iter().any(|s| s.update_available);
+
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(w) = weak.upgrade() {
+                    w.set_dep_items(dep_status_model(&statuses));
+                    w.set_deps_checking(false);
+                    w.set_deps_any_updates(any_updates);
+                }
+            });
+        });
+    });
+}
+
+fn connect_update_all_deps(window: &MainWindow, state: SharedState, rt: Handle) {
+    let weak = window.as_weak();
+    window.on_update_all_deps(move || {
+        let state = state.clone();
+        let weak = weak.clone();
+
+        if let Some(w) = weak.upgrade() {
+            w.set_deps_downloading(true);
+            w.set_deps_status("Updating dependencies...".into());
+        }
+
+        rt.spawn(async move {
+            let dirs = { state.lock().unwrap().dirs.clone() };
+            let mgr = tendril_core::deps::DependencyManager::new(&dirs);
+
+            // Get current statuses to know what needs updating
+            let statuses = mgr.check_updates().await;
+            let updatable: Vec<String> = statuses
+                .iter()
+                .filter(|s| s.update_available)
+                .map(|s| s.name.clone())
+                .collect();
+
+            for name in &updatable {
+                let weak_inner = weak.clone();
+                let msg = format!("Updating {}...", name);
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = weak_inner.upgrade() {
+                        w.set_deps_status(msg.into());
+                    }
+                });
+
+                let result = match name.as_str() {
+                    "demucs" => mgr.update_demucs().await,
+                    "yt-dlp" => mgr.update_ytdlp().await,
+                    "ffmpeg" => mgr.update_ffmpeg().await,
+                    _ => Ok(()),
+                };
+                if let Err(e) = result {
+                    tracing::error!("Failed to update {name}: {e}");
+                }
+            }
+
+            // Re-check after all updates
+            let statuses = mgr.check_updates().await;
+            let any_updates = statuses.iter().any(|s| s.update_available);
+
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(w) = weak.upgrade() {
+                    w.set_dep_items(dep_status_model(&statuses));
+                    w.set_deps_downloading(false);
+                    w.set_deps_any_updates(any_updates);
+                    w.set_deps_status("".into());
+                }
+            });
+        });
+    });
+}
+
 fn connect_browse_output(window: &MainWindow, state: SharedState) {
     let weak = window.as_weak();
     window.on_browse_output_dir(move || {
@@ -680,6 +768,7 @@ fn dep_status_model(
         .map(|s| crate::DepItemData {
             name: s.name.clone().into(),
             version: s.version.clone().unwrap_or_default().into(),
+            latest_version: s.latest_version.clone().unwrap_or_default().into(),
             status: match s.state {
                 tendril_core::deps::DepState::Installed => "installed",
                 tendril_core::deps::DepState::System => "system",
