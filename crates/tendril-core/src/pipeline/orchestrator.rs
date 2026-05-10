@@ -28,7 +28,7 @@ pub async fn run(
     ctx: &PipelineContext,
     source: JobSource,
     progress_tx: Arc<watch::Sender<ProgressEvent>>,
-    mut cancel_rx: watch::Receiver<bool>,
+    cancel_rx: watch::Receiver<bool>,
 ) -> Result<(), PipelineError> {
     let send = |stage, fraction, message: &str| {
         let _ = progress_tx.send(ProgressEvent {
@@ -51,7 +51,7 @@ pub async fn run(
             let ffmpeg_dir = ctx
                 .ffmpeg_bin
                 .parent()
-                .unwrap_or(Path::new("."))
+                .unwrap_or_else(|| Path::new("."))
                 .to_path_buf();
 
             let path = crate::youtube::download::download_audio(
@@ -66,7 +66,7 @@ pub async fn run(
                 message: e.to_string(),
             })?;
 
-            check_cancelled(&mut cancel_rx)?;
+            check_cancelled(&cancel_rx)?;
             send(PipelineStage::Downloading, 1.0, "Download complete");
             path
         }
@@ -86,7 +86,7 @@ pub async fn run(
     let bin_dir = ctx
         .ffmpeg_bin
         .parent()
-        .unwrap_or(Path::new("."))
+        .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
 
     let stems = crate::splitter::engine::separate(
@@ -109,7 +109,7 @@ pub async fn run(
         },
     })?;
 
-    check_cancelled(&mut cancel_rx)?;
+    check_cancelled(&cancel_rx)?;
 
     // ── Stage 3: Convert stems to output format ──
     send(
@@ -138,7 +138,7 @@ pub async fn run(
                 message: e.to_string(),
             })?;
 
-        check_cancelled(&mut cancel_rx)?;
+        check_cancelled(&cancel_rx)?;
 
         send(
             PipelineStage::Converting,
@@ -193,7 +193,7 @@ pub async fn run(
 }
 
 /// Check if the job has been cancelled.
-fn check_cancelled(cancel_rx: &mut watch::Receiver<bool>) -> Result<(), PipelineError> {
+fn check_cancelled(cancel_rx: &watch::Receiver<bool>) -> Result<(), PipelineError> {
     if *cancel_rx.borrow() {
         return Err(PipelineError::Cancelled);
     }

@@ -8,7 +8,7 @@ pub struct JobQueue {
 }
 
 impl JobQueue {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             jobs: VecDeque::new(),
         }
