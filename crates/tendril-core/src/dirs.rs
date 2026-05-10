@@ -16,8 +16,9 @@ pub struct AppDirs {
 impl AppDirs {
     /// Resolve platform directories and create them if needed.
     pub fn resolve() -> std::io::Result<Self> {
-        let proj =
-            ProjectDirs::from("com", "tendril", "Tendril").expect("home directory must exist");
+        let proj = ProjectDirs::from("com", "tendril", "Tendril").ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "no home directory")
+        })?;
 
         let dirs = Self {
             config_dir: proj.config_dir().to_path_buf(),
@@ -61,14 +62,17 @@ impl AppDirs {
     }
 
     /// Default output directory for separated stems.
+    ///
+    /// Falls back to the current working directory if no home is available
+    /// — `Config::default()` calls this and can't return a Result.
     pub fn default_output_dir() -> PathBuf {
         directories::UserDirs::new()
-            .and_then(|u| u.audio_dir().map(Path::to_path_buf))
-            .unwrap_or_else(|| {
-                directories::UserDirs::new()
-                    .map(|u| u.home_dir().join("Music"))
-                    .expect("home directory must exist")
+            .map(|u| {
+                u.audio_dir()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| u.home_dir().join("Music"))
             })
+            .unwrap_or_else(|| PathBuf::from("."))
             .join("Tendril")
     }
 }
