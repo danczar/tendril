@@ -39,10 +39,12 @@ pub async fn separate(
         )));
     }
 
-    std::fs::create_dir_all(output_dir)
+    tokio::fs::create_dir_all(output_dir)
+        .await
         .map_err(|e| SplitterError::Inference(format!("failed to create output dir: {e}")))?;
 
-    std::fs::create_dir_all(models_dir)
+    tokio::fs::create_dir_all(models_dir)
+        .await
         .map_err(|e| SplitterError::Inference(format!("failed to create models dir: {e}")))?;
 
     let mut cmd = tokio::process::Command::new(python_bin);

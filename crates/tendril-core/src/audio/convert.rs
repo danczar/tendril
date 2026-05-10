@@ -30,9 +30,11 @@ pub async fn convert(
 
     // If target is WAV and input is already WAV, just copy
     if format == OutputFormat::Wav && input.extension().and_then(|e| e.to_str()) == Some("wav") {
-        std::fs::copy(input, &output_path).map_err(|e| AudioError::Conversion {
-            message: format!("failed to copy WAV: {e}"),
-        })?;
+        tokio::fs::copy(input, &output_path)
+            .await
+            .map_err(|e| AudioError::Conversion {
+                message: format!("failed to copy WAV: {e}"),
+            })?;
         return Ok(output_path);
     }
 
@@ -68,9 +70,11 @@ pub async fn convert_to(
     output_path: &Path,
 ) -> Result<PathBuf, AudioError> {
     if format == OutputFormat::Wav && input.extension().and_then(|e| e.to_str()) == Some("wav") {
-        std::fs::copy(input, output_path).map_err(|e| AudioError::Conversion {
-            message: format!("failed to copy WAV: {e}"),
-        })?;
+        tokio::fs::copy(input, output_path)
+            .await
+            .map_err(|e| AudioError::Conversion {
+                message: format!("failed to copy WAV: {e}"),
+            })?;
         return Ok(output_path.to_path_buf());
     }
 

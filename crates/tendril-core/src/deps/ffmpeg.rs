@@ -51,7 +51,9 @@ pub async fn ensure(client: &reqwest::Client, bin_dir: &Path) -> Result<PathBuf,
         }
     }
 
-    std::fs::create_dir_all(bin_dir).map_err(DependencyError::Extract)?;
+    tokio::fs::create_dir_all(bin_dir)
+        .await
+        .map_err(DependencyError::Extract)?;
     tracing::info!("Downloading ffmpeg...");
     download(client, bin_dir).await?;
     Ok(managed_path)
@@ -263,12 +265,15 @@ async fn download_asset(
         .bytes()
         .await?;
 
-    std::fs::write(dest, &bytes).map_err(DependencyError::Extract)?;
+    tokio::fs::write(dest, &bytes)
+        .await
+        .map_err(DependencyError::Extract)?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
+        tokio::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
+            .await
             .map_err(DependencyError::Extract)?;
     }
 

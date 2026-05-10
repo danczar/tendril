@@ -99,7 +99,9 @@ pub async fn ensure(
     };
 
     let demucs_dir = dirs.demucs_dir();
-    std::fs::create_dir_all(&demucs_dir).map_err(DependencyError::Extract)?;
+    tokio::fs::create_dir_all(&demucs_dir)
+        .await
+        .map_err(DependencyError::Extract)?;
 
     // ── Step 1: Download python-build-standalone ──
     let url = python_download_url();
@@ -157,7 +159,8 @@ pub async fn ensure(
     {
         use std::os::unix::fs::PermissionsExt;
         if python_bin.exists() {
-            std::fs::set_permissions(&python_bin, std::fs::Permissions::from_mode(0o755))
+            tokio::fs::set_permissions(&python_bin, std::fs::Permissions::from_mode(0o755))
+                .await
                 .map_err(DependencyError::Extract)?;
         }
     }

@@ -175,19 +175,19 @@ impl DependencyManager {
         let temp_path = bin_dir.join(format!("{}.new", ytdlp_binary_name()));
 
         // Cleanup any leftover from a prior aborted run.
-        let _ = std::fs::remove_file(&temp_path);
+        let _ = tokio::fs::remove_file(&temp_path).await;
 
         let download_result = ytdlp::download_to(&self.client, &temp_path).await;
         if let Err(e) = download_result {
-            let _ = std::fs::remove_file(&temp_path);
+            let _ = tokio::fs::remove_file(&temp_path).await;
             return Err(e);
         }
 
         // Sanity check: file should be at least 1 MB (real yt-dlp is ~30 MB).
-        match std::fs::metadata(&temp_path) {
+        match tokio::fs::metadata(&temp_path).await {
             Ok(meta) if meta.len() >= 1_000_000 => {}
             Ok(meta) => {
-                let _ = std::fs::remove_file(&temp_path);
+                let _ = tokio::fs::remove_file(&temp_path).await;
                 return Err(DependencyError::GitHubApi {
                     message: format!(
                         "yt-dlp download too small ({} bytes); aborting update",
@@ -196,7 +196,7 @@ impl DependencyManager {
                 });
             }
             Err(e) => {
-                let _ = std::fs::remove_file(&temp_path);
+                let _ = tokio::fs::remove_file(&temp_path).await;
                 return Err(DependencyError::Extract(e));
             }
         }
@@ -209,7 +209,7 @@ impl DependencyManager {
         match version_check {
             Ok(out) if out.status.success() => {}
             Ok(out) => {
-                let _ = std::fs::remove_file(&temp_path);
+                let _ = tokio::fs::remove_file(&temp_path).await;
                 return Err(DependencyError::GitHubApi {
                     message: format!(
                         "downloaded yt-dlp failed --version check: {}",
@@ -218,7 +218,7 @@ impl DependencyManager {
                 });
             }
             Err(e) => {
-                let _ = std::fs::remove_file(&temp_path);
+                let _ = tokio::fs::remove_file(&temp_path).await;
                 return Err(DependencyError::Extract(e));
             }
         }
@@ -226,8 +226,8 @@ impl DependencyManager {
         // Atomic swap. On Windows rename-over-existing requires the
         // existing file to be removed first.
         #[cfg(target_os = "windows")]
-        let _ = std::fs::remove_file(&final_path);
-        std::fs::rename(&temp_path, &final_path).map_err(DependencyError::Extract)?;
+        let _ = tokio::fs::remove_file(&final_path).await;
+        tokio::fs::rename(&temp_path, &final_path).await.map_err(DependencyError::Extract)?;
 
         let mut versions = versions::InstalledVersions::load(&self.dirs.data_dir);
         versions.ytdlp = query_ytdlp_version(&self.dirs).await;
@@ -248,22 +248,22 @@ impl DependencyManager {
 
         // Wipe staging from any prior aborted run.
         if staging.exists() {
-            let _ = std::fs::remove_dir_all(&staging);
+            let _ = tokio::fs::remove_dir_all(&staging).await;
         }
-        std::fs::create_dir_all(&staging).map_err(DependencyError::Extract)?;
+        tokio::fs::create_dir_all(&staging).await.map_err(DependencyError::Extract)?;
 
         // Download into the staging directory.
         if let Err(e) = ffmpeg::download_into(&self.client, &staging).await {
-            let _ = std::fs::remove_dir_all(&staging);
+            let _ = tokio::fs::remove_dir_all(&staging).await;
             return Err(e);
         }
 
         // Verify staged ffmpeg works.
         let staged_ffmpeg = staging.join(ffmpeg_binary_name());
-        match std::fs::metadata(&staged_ffmpeg) {
+        match tokio::fs::metadata(&staged_ffmpeg).await {
             Ok(meta) if meta.len() >= 100_000 => {}
             Ok(meta) => {
-                let _ = std::fs::remove_dir_all(&staging);
+                let _ = tokio::fs::remove_dir_all(&staging).await;
                 return Err(DependencyError::GitHubApi {
                     message: format!(
                         "ffmpeg download too small ({} bytes); aborting update",
@@ -272,7 +272,7 @@ impl DependencyManager {
                 });
             }
             Err(e) => {
-                let _ = std::fs::remove_dir_all(&staging);
+                let _ = tokio::fs::remove_dir_all(&staging).await;
                 return Err(DependencyError::Extract(e));
             }
         }
@@ -283,7 +283,7 @@ impl DependencyManager {
         match version_check {
             Ok(out) if out.status.success() => {}
             Ok(out) => {
-                let _ = std::fs::remove_dir_all(&staging);
+                let _ = tokio::fs::remove_dir_all(&staging).await;
                 return Err(DependencyError::GitHubApi {
                     message: format!(
                         "downloaded ffmpeg failed -version check: {}",
@@ -292,7 +292,7 @@ impl DependencyManager {
                 });
             }
             Err(e) => {
-                let _ = std::fs::remove_dir_all(&staging);
+                let _ = tokio::fs::remove_dir_all(&staging).await;
                 return Err(DependencyError::Extract(e));
             }
         }
@@ -300,11 +300,11 @@ impl DependencyManager {
         // Atomic swap: move every staged file into bin_dir, replacing
         // any existing version. We do this per-file (rather than swapping
         // directories) so unrelated files in bin_dir survive.
-        if let Err(e) = swap_in_directory(&staging, &bin_dir) {
-            let _ = std::fs::remove_dir_all(&staging);
+        if let Err(e) = swap_in_directory(&staging, &bin_dir).await {
+            let _ = tokio::fs::remove_dir_all(&staging).await;
             return Err(DependencyError::Extract(e));
         }
-        let _ = std::fs::remove_dir_all(&staging);
+        let _ = tokio::fs::remove_dir_all(&staging).await;
 
         let mut versions = versions::InstalledVersions::load(&self.dirs.data_dir);
         let (ver, source) = query_ffmpeg_version(&self.dirs).await;
@@ -330,9 +330,9 @@ fn apply_latest(statuses: &mut [DependencyStatus], name: &str, latest: &str) {
 
 /// Move every file from `src` over the matching name in `dest`,
 /// replacing existing files atomically (per-file rename).
-fn swap_in_directory(src: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
+async fn swap_in_directory(src: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
+    let mut entries = tokio::fs::read_dir(src).await?;
+    while let Some(entry) = entries.next_entry().await? {
         let from = entry.path();
         let Some(name) = from.file_name() else {
             continue;
@@ -341,9 +341,9 @@ fn swap_in_directory(src: &std::path::Path, dest: &std::path::Path) -> std::io::
 
         // On Windows, rename fails if dest exists; remove first.
         #[cfg(target_os = "windows")]
-        let _ = std::fs::remove_file(&to);
+        let _ = tokio::fs::remove_file(&to).await;
 
-        std::fs::rename(&from, &to)?;
+        tokio::fs::rename(&from, &to).await?;
     }
     Ok(())
 }

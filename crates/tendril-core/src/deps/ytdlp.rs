@@ -22,7 +22,9 @@ pub async fn ensure(client: &reqwest::Client, bin_dir: &Path) -> Result<PathBuf,
         return Ok(path);
     }
 
-    std::fs::create_dir_all(bin_dir).map_err(DependencyError::Extract)?;
+    tokio::fs::create_dir_all(bin_dir)
+        .await
+        .map_err(DependencyError::Extract)?;
 
     tracing::info!("Downloading yt-dlp...");
     download_to(client, &path).await?;
@@ -58,12 +60,15 @@ pub async fn download_to(client: &reqwest::Client, dest: &Path) -> Result<(), De
         .bytes()
         .await?;
 
-    std::fs::write(dest, &bytes).map_err(DependencyError::Extract)?;
+    tokio::fs::write(dest, &bytes)
+        .await
+        .map_err(DependencyError::Extract)?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
+        tokio::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
+            .await
             .map_err(DependencyError::Extract)?;
     }
 
