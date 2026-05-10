@@ -29,8 +29,27 @@ pub async fn search(query: &str) -> Result<Vec<SearchResult>, crate::error::Yout
 
     let mut seen = HashSet::new();
 
-    let track_items: Vec<_> = tracks.into_iter().flat_map(|r| r.items.items).collect();
-    let video_items: Vec<_> = videos.into_iter().flat_map(|r| r.items.items).collect();
+    let track_items = match tracks {
+        Ok(r) => r.items.items,
+        Err(e) => {
+            if videos.is_err() {
+                return Err(crate::error::YoutubeError::Search(format!(
+                    "search failed for both tabs: tracks={e}, videos={:?}",
+                    videos.as_ref().err().map(|e| e.to_string())
+                )));
+            }
+            tracing::warn!("music_search_tracks failed (continuing with video results only): {e}");
+            Vec::new()
+        }
+    };
+    let video_items = match videos {
+        Ok(r) => r.items.items,
+        Err(e) => {
+            // tracks was Ok if we got here (the both-fail case is handled above).
+            tracing::warn!("music_search_videos failed (continuing with track results only): {e}");
+            Vec::new()
+        }
+    };
 
     // Interleave: video, song, video, song, ...
     let mut items = Vec::new();
