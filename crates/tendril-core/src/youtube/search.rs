@@ -24,21 +24,13 @@ pub async fn search(query: &str) -> Result<Vec<SearchResult>, crate::error::Yout
     let rp = RustyPipe::new();
     let q = rp.query();
 
-    let (tracks, videos) = tokio::join!(
-        q.music_search_tracks(query),
-        q.music_search_videos(query),
-    );
+    let (tracks, videos) =
+        tokio::join!(q.music_search_tracks(query), q.music_search_videos(query),);
 
     let mut seen = HashSet::new();
 
-    let track_items: Vec<_> = tracks
-        .into_iter()
-        .flat_map(|r| r.items.items)
-        .collect();
-    let video_items: Vec<_> = videos
-        .into_iter()
-        .flat_map(|r| r.items.items)
-        .collect();
+    let track_items: Vec<_> = tracks.into_iter().flat_map(|r| r.items.items).collect();
+    let video_items: Vec<_> = videos.into_iter().flat_map(|r| r.items.items).collect();
 
     // Interleave: video, song, video, song, ...
     let mut items = Vec::new();
@@ -73,9 +65,7 @@ fn map_track_item(t: TrackItem) -> SearchResult {
             .cover
             .first()
             .map(|c| c.url.clone())
-            .unwrap_or_else(|| {
-                format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", t.id)
-            }),
+            .unwrap_or_else(|| format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", t.id)),
         video_id: t.id,
         title: t.name,
         channel,

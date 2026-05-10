@@ -36,7 +36,11 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
     vec![
         DependencyStatus {
             name: "Python".into(),
-            state: if python_exists { DepState::Installed } else { DepState::Missing },
+            state: if python_exists {
+                DepState::Installed
+            } else {
+                DepState::Missing
+            },
             version: versions.python.clone(),
             updatable: false, // pinned per Tendril release
             update_available: false,
@@ -98,11 +102,19 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
 }
 
 #[cfg(target_os = "windows")]
-fn ytdlp_binary_name() -> &'static str { "yt-dlp.exe" }
+fn ytdlp_binary_name() -> &'static str {
+    "yt-dlp.exe"
+}
 #[cfg(not(target_os = "windows"))]
-fn ytdlp_binary_name() -> &'static str { "yt-dlp" }
+fn ytdlp_binary_name() -> &'static str {
+    "yt-dlp"
+}
 
 #[cfg(target_os = "windows")]
-fn ffmpeg_binary_name() -> &'static str { "ffmpeg.exe" }
+fn ffmpeg_binary_name() -> &'static str {
+    "ffmpeg.exe"
+}
 #[cfg(not(target_os = "windows"))]
-fn ffmpeg_binary_name() -> &'static str { "ffmpeg" }
+fn ffmpeg_binary_name() -> &'static str {
+    "ffmpeg"
+}

@@ -63,7 +63,9 @@ pub fn init_dep_status(window: &MainWindow, state: &SharedState) {
     let s = state.lock().unwrap();
     let mgr = tendril_core::deps::DependencyManager::new(&s.dirs);
     let statuses = mgr.check_status();
-    let all_installed = statuses.iter().all(|s| s.state != tendril_core::deps::DepState::Missing);
+    let all_installed = statuses
+        .iter()
+        .all(|s| s.state != tendril_core::deps::DepState::Missing);
     window.set_dep_items(dep_status_model(&statuses));
     window.set_deps_all_installed(all_installed);
 }
@@ -75,9 +77,10 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
             // Find the first Queued job
             let job_info = {
                 let s = state.lock().unwrap();
-                let found = s.queue.iter().find(|job| {
-                    job.progress_rx.borrow().stage == PipelineStage::Queued
-                });
+                let found = s
+                    .queue
+                    .iter()
+                    .find(|job| job.progress_rx.borrow().stage == PipelineStage::Queued);
                 found.map(|job| {
                     (
                         job.id,
@@ -122,7 +125,8 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
                         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     }
                     Err(e) => {
-                        let is_cancelled = matches!(e, tendril_core::error::PipelineError::Cancelled);
+                        let is_cancelled =
+                            matches!(e, tendril_core::error::PipelineError::Cancelled);
                         if is_cancelled {
                             tracing::info!("Job {job_id} cancelled");
                         } else {
@@ -297,9 +301,7 @@ fn perform_search(query: String, state: SharedState, weak: slint::Weak<MainWindo
                     s.search_results = results.clone();
                 }
 
-                let output_dir = {
-                    state.lock().unwrap().config.output_dir.clone()
-                };
+                let output_dir = { state.lock().unwrap().config.output_dir.clone() };
 
                 let weak_inner = weak.clone();
                 let gen_for_ui = gen_counter.clone();
@@ -334,9 +336,9 @@ fn perform_search(query: String, state: SharedState, weak: slint::Weak<MainWindo
                     }
                     if let Some(window) = weak.upgrade() {
                         window.set_searching(false);
-                        window.set_status_message(
-                            slint::SharedString::from(format!("Search failed: {e}")),
-                        );
+                        window.set_status_message(slint::SharedString::from(format!(
+                            "Search failed: {e}"
+                        )));
                     }
                 });
             }
@@ -364,7 +366,12 @@ async fn fetch_thumbnails(
         if s.search_generation.load(Ordering::SeqCst) != my_gen {
             return;
         }
-        s.search_results.iter().skip(start).take(count).cloned().collect()
+        s.search_results
+            .iter()
+            .skip(start)
+            .take(count)
+            .cloned()
+            .collect()
     };
 
     if batch.is_empty() {
@@ -402,15 +409,14 @@ async fn fetch_thumbnails(
 
     // Decode images off the UI thread (JPEG decoding is CPU-intensive).
     // slint::Image is !Send, so pass raw RGBA pixels and create Images on the UI thread.
-    let decoded: Vec<Option<(Vec<u8>, u32, u32)>> =
-        tokio::task::spawn_blocking(move || {
-            thumbnail_bytes
-                .into_iter()
-                .map(|bytes| crate::models::decode_to_rgba(bytes.as_deref()))
-                .collect()
-        })
-        .await
-        .unwrap_or_default();
+    let decoded: Vec<Option<(Vec<u8>, u32, u32)>> = tokio::task::spawn_blocking(move || {
+        thumbnail_bytes
+            .into_iter()
+            .map(|bytes| crate::models::decode_to_rgba(bytes.as_deref()))
+            .collect()
+    })
+    .await
+    .unwrap_or_default();
 
     if gen_counter.load(Ordering::SeqCst) != my_gen {
         return;
@@ -625,7 +631,9 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
                         // get refreshed alongside install state. Without this,
                         // the modal goes blank after a download completes.
                         let statuses = mgr.check_updates().await;
-                        let all_installed = statuses.iter().all(|s| s.state != tendril_core::deps::DepState::Missing);
+                        let all_installed = statuses
+                            .iter()
+                            .all(|s| s.state != tendril_core::deps::DepState::Missing);
                         let any_updates = statuses.iter().any(|s| s.update_available);
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(w) = weak.upgrade() {
@@ -643,9 +651,9 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(w) = weak.upgrade() {
                                 w.set_deps_downloading(false);
-                                w.set_deps_status(
-                                    slint::SharedString::from(format!("Failed: {msg}")),
-                                );
+                                w.set_deps_status(slint::SharedString::from(format!(
+                                    "Failed: {msg}"
+                                )));
                             }
                         });
                     }
@@ -793,9 +801,7 @@ fn connect_browse_output(window: &MainWindow, state: SharedState) {
         let weak = weak.clone();
         let state = state.clone();
         std::thread::spawn(move || {
-            let folder = rfd::FileDialog::new()
-                .set_directory(&current)
-                .pick_folder();
+            let folder = rfd::FileDialog::new().set_directory(&current).pick_folder();
             if let Some(path) = folder {
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(w) = weak.upgrade() {
@@ -854,7 +860,10 @@ fn connect_file_dropped(window: &MainWindow, state: SharedState, rt: Handle) {
 }
 
 /// Extract embedded album art from an audio file using ffmpeg.
-async fn extract_album_art(ffmpeg_bin: &std::path::Path, input: &std::path::Path) -> Option<Vec<u8>> {
+async fn extract_album_art(
+    ffmpeg_bin: &std::path::Path,
+    input: &std::path::Path,
+) -> Option<Vec<u8>> {
     let output = tokio::process::Command::new(ffmpeg_bin)
         .arg("-i")
         .arg(input)

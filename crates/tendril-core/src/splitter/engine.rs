@@ -103,9 +103,8 @@ pub async fn separate(
     let is_ft = model_name.contains("_ft");
     let progress_tx_clone = progress_tx.clone();
 
-    let stderr_handle = tokio::spawn(async move {
-        parse_stderr(stderr, is_ft, progress_tx_clone).await
-    });
+    let stderr_handle =
+        tokio::spawn(async move { parse_stderr(stderr, is_ft, progress_tx_clone).await });
 
     let status = if let Some(mut rx) = cancel_rx {
         tokio::select! {
@@ -134,7 +133,9 @@ pub async fn separate(
             }
         }
     } else {
-        child.wait().await
+        child
+            .wait()
+            .await
             .map_err(|e| SplitterError::Inference(format!("failed to wait on demucs: {e}")))?
     };
 

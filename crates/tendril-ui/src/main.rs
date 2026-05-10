@@ -139,8 +139,8 @@ fn main() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 fn set_macos_dock_icon() {
-    use objc2::MainThreadMarker;
     use objc2::AllocAnyThread;
+    use objc2::MainThreadMarker;
     use objc2_app_kit::{NSApplication, NSImage};
     use objc2_foundation::NSData;
 
@@ -150,6 +150,9 @@ fn set_macos_dock_icon() {
     let app = NSApplication::sharedApplication(mtm);
     let data = NSData::with_bytes(ICON_PNG);
     if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+        // SAFETY: setApplicationIconImage requires a main-thread call (we hold
+        // MainThreadMarker above) and a valid NSImage* (constructed from in-memory
+        // PNG above; ARC retains via the &image reference).
         unsafe { app.setApplicationIconImage(Some(&image)) };
     }
 }

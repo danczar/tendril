@@ -3,6 +3,9 @@ name = "tendril-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Audio stem separation core: pipeline, deps, splitter for the Tendril app"
+repository = "https://github.com/danczar/tendril"
+readme = "../../README.md"
 
 [dependencies]
 tokio = { workspace = true }
@@ -17,7 +20,7 @@ rustypipe = { workspace = true }
 futures = { workspace = true }
 flate2 = { workspace = true }
 tar = { workspace = true }
-regex = "1"
+regex = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 zip = "2"

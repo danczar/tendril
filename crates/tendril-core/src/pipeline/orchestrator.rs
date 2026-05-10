@@ -118,10 +118,8 @@ pub async fn run(
         "Converting to output format...",
     );
 
-    let song_name = crate::pipeline::job::output_folder_name(
-        source.display_name(),
-        source.video_id(),
-    );
+    let song_name =
+        crate::pipeline::job::output_folder_name(source.display_name(), source.video_id());
     let final_dir = ctx.output_dir.join(&song_name);
     std::fs::create_dir_all(&final_dir).map_err(|e| PipelineError::StageFailed {
         stage: "convert".into(),
@@ -131,17 +129,12 @@ pub async fn run(
     let stem_paths = [&stems.vocals, &stems.drums, &stems.bass, &stems.other];
 
     for (i, stem_path) in stem_paths.iter().enumerate() {
-        crate::audio::convert::convert(
-            &ctx.ffmpeg_bin,
-            stem_path,
-            ctx.output_format,
-            &final_dir,
-        )
-        .await
-        .map_err(|e| PipelineError::StageFailed {
-            stage: "convert".into(),
-            message: e.to_string(),
-        })?;
+        crate::audio::convert::convert(&ctx.ffmpeg_bin, stem_path, ctx.output_format, &final_dir)
+            .await
+            .map_err(|e| PipelineError::StageFailed {
+                stage: "convert".into(),
+                message: e.to_string(),
+            })?;
 
         check_cancelled(&mut cancel_rx)?;
 

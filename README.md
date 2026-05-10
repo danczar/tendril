@@ -31,7 +31,7 @@ Tendril is a desktop app that splits audio tracks into individual stems using [D
 
 ## Install
 
-Pre-built binaries are not yet available. See [Building from Source](#building-from-source) below.
+Download the latest release for your platform from the [GitHub Releases](https://github.com/danczar/tendril/releases) page, or [build from source](#building-from-source).
 
 On first launch, Tendril will automatically download:
 - **ffmpeg** — audio format conversion

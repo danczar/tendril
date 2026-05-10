@@ -16,8 +16,8 @@ pub struct AppDirs {
 impl AppDirs {
     /// Resolve platform directories and create them if needed.
     pub fn resolve() -> std::io::Result<Self> {
-        let proj = ProjectDirs::from("com", "tendril", "Tendril")
-            .expect("home directory must exist");
+        let proj =
+            ProjectDirs::from("com", "tendril", "Tendril").expect("home directory must exist");
 
         let dirs = Self {
             config_dir: proj.config_dir().to_path_buf(),

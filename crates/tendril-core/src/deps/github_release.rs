@@ -20,9 +20,7 @@ pub async fn latest_release(
     owner: &str,
     repo: &str,
 ) -> Result<Release, DependencyError> {
-    let url = format!(
-        "https://api.github.com/repos/{owner}/{repo}/releases/latest"
-    );
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/releases/latest");
     let resp = client
         .get(&url)
         .header("User-Agent", "tendril")
@@ -43,9 +41,7 @@ pub async fn tagged_release(
     repo: &str,
     tag: &str,
 ) -> Result<Release, DependencyError> {
-    let url = format!(
-        "https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}"
-    );
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}");
     let resp = client
         .get(&url)
         .header("User-Agent", "tendril")

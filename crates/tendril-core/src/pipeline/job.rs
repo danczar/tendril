@@ -11,24 +11,18 @@ static NEXT_JOB_ID: AtomicU64 = AtomicU64::new(1);
 /// Where the audio originates from.
 #[derive(Debug, Clone)]
 pub enum JobSource {
-    Youtube {
-        video_id: String,
-        title: String,
-    },
-    LocalFile {
-        path: PathBuf,
-    },
+    Youtube { video_id: String, title: String },
+    LocalFile { path: PathBuf },
 }
 
 impl JobSource {
     pub fn display_name(&self) -> &str {
         match self {
             JobSource::Youtube { title, .. } => title,
-            JobSource::LocalFile { path } => {
-                path.file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown")
-            }
+            JobSource::LocalFile { path } => path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown"),
         }
     }
 
