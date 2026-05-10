@@ -123,10 +123,12 @@ pub async fn run(
         source.video_id(),
     );
     let final_dir = ctx.output_dir.join(&song_name);
-    std::fs::create_dir_all(&final_dir).map_err(|e| PipelineError::StageFailed {
-        stage: "convert".into(),
-        message: e.to_string(),
-    })?;
+    tokio::fs::create_dir_all(&final_dir)
+        .await
+        .map_err(|e| PipelineError::StageFailed {
+            stage: "convert".into(),
+            message: e.to_string(),
+        })?;
 
     let stem_paths = [&stems.vocals, &stems.drums, &stems.bass, &stems.other];
 
@@ -192,7 +194,7 @@ pub async fn run(
     send(PipelineStage::Complete, 1.0, "Done!");
 
     // ── Clean up temp files ──
-    cleanup_temp_files(&audio_path, &stem_dir, &source);
+    cleanup_temp_files(&audio_path, &stem_dir, &source).await;
 
     Ok(())
 }
@@ -206,17 +208,17 @@ fn check_cancelled(cancel_rx: &mut watch::Receiver<bool>) -> Result<(), Pipeline
 }
 
 /// Remove intermediate downloads and stem files after successful completion.
-fn cleanup_temp_files(audio_path: &Path, stem_dir: &Path, source: &JobSource) {
+async fn cleanup_temp_files(audio_path: &Path, stem_dir: &Path, source: &JobSource) {
     // Only delete downloaded files for YouTube sources (not user's local files)
     if matches!(source, JobSource::Youtube { .. }) {
-        if let Err(e) = std::fs::remove_file(audio_path) {
+        if let Err(e) = tokio::fs::remove_file(audio_path).await {
             tracing::warn!("Failed to clean up download {}: {e}", audio_path.display());
         }
     }
 
     // Clean up intermediate stem WAVs
     if stem_dir.exists() {
-        if let Err(e) = std::fs::remove_dir_all(stem_dir) {
+        if let Err(e) = tokio::fs::remove_dir_all(stem_dir).await {
             tracing::warn!("Failed to clean up stems {}: {e}", stem_dir.display());
         }
     }
