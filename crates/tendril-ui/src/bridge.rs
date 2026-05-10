@@ -9,8 +9,8 @@ use tokio::runtime::Handle;
 use tendril_core::pipeline::orchestrator::PipelineContext;
 use tendril_core::progress::PipelineStage;
 
-use crate::state::SharedState;
 use crate::MainWindow;
+use crate::state::SharedState;
 
 thread_local! {
     /// UI-thread-only cache of decoded queue thumbnails keyed by
@@ -98,7 +98,10 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
                 let ctx = {
                     let s = state.lock().unwrap();
                     PipelineContext {
-                        ytdlp_bin: s.dirs.bin_dir().join(tendril_core::deps::ytdlp_binary_name()),
+                        ytdlp_bin: s
+                            .dirs
+                            .bin_dir()
+                            .join(tendril_core::deps::ytdlp_binary_name()),
                         ffmpeg_bin: resolve_ffmpeg(&s.dirs),
                         python_bin: s.dirs.python_bin(),
                         models_dir: s.dirs.models_dir(),
@@ -914,7 +917,9 @@ fn dep_status_model(
 /// `deps::ffmpeg::ensure` — that's only relevant when downloads are
 /// possible. For pipeline invocation we just need *some* working binary.
 fn resolve_ffmpeg(dirs: &tendril_core::dirs::AppDirs) -> std::path::PathBuf {
-    let managed = dirs.bin_dir().join(tendril_core::deps::ffmpeg_binary_name());
+    let managed = dirs
+        .bin_dir()
+        .join(tendril_core::deps::ffmpeg_binary_name());
     if managed.exists() {
         return managed;
     }

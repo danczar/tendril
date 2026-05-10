@@ -227,7 +227,9 @@ impl DependencyManager {
         // existing file to be removed first.
         #[cfg(target_os = "windows")]
         let _ = tokio::fs::remove_file(&final_path).await;
-        tokio::fs::rename(&temp_path, &final_path).await.map_err(DependencyError::Extract)?;
+        tokio::fs::rename(&temp_path, &final_path)
+            .await
+            .map_err(DependencyError::Extract)?;
 
         let mut versions = versions::InstalledVersions::load(&self.dirs.data_dir);
         versions.ytdlp = query_ytdlp_version(&self.dirs).await;
@@ -250,7 +252,9 @@ impl DependencyManager {
         if staging.exists() {
             let _ = tokio::fs::remove_dir_all(&staging).await;
         }
-        tokio::fs::create_dir_all(&staging).await.map_err(DependencyError::Extract)?;
+        tokio::fs::create_dir_all(&staging)
+            .await
+            .map_err(DependencyError::Extract)?;
 
         // Download into the staging directory.
         if let Err(e) = ffmpeg::download_into(&self.client, &staging).await {
