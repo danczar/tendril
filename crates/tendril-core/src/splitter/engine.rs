@@ -21,6 +21,7 @@ pub struct StemOutput {
 ///
 /// Invokes `python -m demucs.separate` with MPS/CUDA/CPU device selection.
 /// Progress is parsed from tqdm output on stderr.
+#[allow(clippy::too_many_arguments)]
 pub async fn separate(
     input: &Path,
     output_dir: &Path,
@@ -216,33 +217,31 @@ async fn parse_stderr(
                 let chunk = String::from_utf8_lossy(&buf[..n]);
                 all_output.push_str(&chunk);
 
-                if let Some(tx) = &progress_tx {
-                    // Find the last progress match in this chunk
-                    if let Some(caps) = progress_re.captures_iter(&chunk).last() {
-                        if let Ok(pct) = caps[1].parse::<f32>() {
-                            // Detect stem transition for htdemucs_ft
-                            if is_ft && pct < last_pct && last_pct > 50.0 {
-                                ft_stem_idx = (ft_stem_idx + 1).min(ft_stems - 1);
-                            }
-                            last_pct = pct;
-
-                            let overall = (ft_stem_idx as f32 + pct / 100.0) / ft_stems as f32;
-                            let _ = tx.send(ProgressEvent {
-                                stage: PipelineStage::Splitting,
-                                fraction: overall.min(0.95), // cap at 95% until done
-                                message: if is_ft {
-                                    format!(
-                                        "Separating stems (pass {}/{})... {:.0}%",
-                                        ft_stem_idx + 1,
-                                        ft_stems,
-                                        pct
-                                    )
-                                } else {
-                                    format!("Separating stems... {:.0}%", pct)
-                                },
-                            });
-                        }
+                if let Some(tx) = &progress_tx
+                    && let Some(caps) = progress_re.captures_iter(&chunk).last()
+                    && let Ok(pct) = caps[1].parse::<f32>()
+                {
+                    // Detect stem transition for htdemucs_ft
+                    if is_ft && pct < last_pct && last_pct > 50.0 {
+                        ft_stem_idx = (ft_stem_idx + 1).min(ft_stems - 1);
                     }
+                    last_pct = pct;
+
+                    let overall = (ft_stem_idx as f32 + pct / 100.0) / ft_stems as f32;
+                    let _ = tx.send(ProgressEvent {
+                        stage: PipelineStage::Splitting,
+                        fraction: overall.min(0.95), // cap at 95% until done
+                        message: if is_ft {
+                            format!(
+                                "Separating stems (pass {}/{})... {:.0}%",
+                                ft_stem_idx + 1,
+                                ft_stems,
+                                pct
+                            )
+                        } else {
+                            format!("Separating stems... {:.0}%", pct)
+                        },
+                    });
                 }
             }
             Err(_) => break,
@@ -257,6 +256,5 @@ fn num_jobs() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1)
-        .min(4)
-        .max(1)
+        .clamp(1, 4)
 }
