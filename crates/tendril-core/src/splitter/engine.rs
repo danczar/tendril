@@ -87,7 +87,11 @@ pub async fn separate(
         }
     }
 
-    cmd.stdout(std::process::Stdio::piped());
+    // We don't read demucs's stdout — pipe it to /dev/null so it can't fill
+    // the OS pipe buffer (~64 KB on macOS, ~8 KB on Windows) and deadlock
+    // the child waiting for someone to drain it. PyTorch warnings and inner
+    // ffmpeg invocations occasionally land on stdout during long runs.
+    cmd.stdout(std::process::Stdio::null());
     cmd.stderr(std::process::Stdio::piped());
 
     let mut child = cmd
@@ -113,8 +117,20 @@ pub async fn separate(
                     if rx.changed().await.is_err() { break; }
                 }
             } => {
+                // Cancellation: kill the child, then reap it (avoid Unix
+                // zombies), then drain the stderr task so it doesn't leak.
+                //
+                // NOTE (Windows): TerminateProcess does not kill descendants.
+                // PyTorch / demucs can spawn helper processes (e.g. data-loader
+                // workers, an inner ffmpeg) that may survive. Fixing this
+                // properly requires a Win32 Job Object with
+                // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, which would mean adding
+                // the (large) `windows` crate as a dependency. Skipped for now
+                // — see Tendril memory / TODOs.
                 let _ = child.kill().await;
-                return Err(SplitterError::Inference("cancelled".into()));
+                let _ = child.wait().await;
+                let _ = stderr_handle.await;
+                return Err(SplitterError::Cancelled);
             }
         }
     } else {

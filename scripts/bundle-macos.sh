@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ICON_SRC="$ROOT/crates/tendril-ui/ui/tendril-icon-new.png"
+ICON_SRC="$ROOT/crates/tendril-ui/ui/tendril-icon-1024.png"
 APP_DIR="$ROOT/target/bundle/Tendril.app"
 CONTENTS="$APP_DIR/Contents"
 
@@ -17,7 +17,7 @@ lipo -create \
     "$ROOT/target/x86_64-apple-darwin/release/Tendril" \
     -output "$CONTENTS/MacOS/Tendril"
 
-echo "==> Generating .icns from tendril-icon-new.png..."
+echo "==> Generating .icns from tendril-icon-1024.png..."
 ICONSET=$(mktemp -d)/tendril.iconset
 mkdir -p "$ICONSET"
 for size in 16 32 128 256 512; do

@@ -28,6 +28,22 @@ pub async fn ensure(
     std::fs::create_dir_all(bin_dir).map_err(DependencyError::Extract)?;
 
     tracing::info!("Downloading yt-dlp...");
+    download_to(client, &path).await?;
+
+    tracing::info!("yt-dlp downloaded to {}", path.display());
+    Ok(path)
+}
+
+/// Download the latest yt-dlp binary directly to `dest`. Caller is
+/// responsible for ensuring `dest`'s parent directory exists. The file
+/// is made executable on Unix.
+///
+/// This is the building block used by both `ensure` and the atomic
+/// update flow.
+pub async fn download_to(
+    client: &reqwest::Client,
+    dest: &Path,
+) -> Result<(), DependencyError> {
     let release = github_release::latest_release(client, "yt-dlp", "yt-dlp").await?;
     let asset = release
         .assets
@@ -48,15 +64,14 @@ pub async fn ensure(
         .bytes()
         .await?;
 
-    std::fs::write(&path, &bytes).map_err(DependencyError::Extract)?;
+    std::fs::write(dest, &bytes).map_err(DependencyError::Extract)?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+        std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
             .map_err(DependencyError::Extract)?;
     }
 
-    tracing::info!("yt-dlp downloaded to {}", path.display());
-    Ok(path)
+    Ok(())
 }

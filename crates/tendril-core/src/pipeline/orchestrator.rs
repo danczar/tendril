@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::watch;
 
 use crate::config::{GpuBackend, OutputFormat};
-use crate::error::PipelineError;
+use crate::error::{PipelineError, SplitterError};
 use crate::pipeline::job::JobSource;
 use crate::progress::{PipelineStage, ProgressEvent};
 
@@ -101,9 +101,12 @@ pub async fn run(
         Some(cancel_rx.clone()),
     )
     .await
-    .map_err(|e| PipelineError::StageFailed {
-        stage: "split".into(),
-        message: e.to_string(),
+    .map_err(|e| match e {
+        SplitterError::Cancelled => PipelineError::Cancelled,
+        other => PipelineError::StageFailed {
+            stage: "split".into(),
+            message: other.to_string(),
+        },
     })?;
 
     check_cancelled(&mut cancel_rx)?;

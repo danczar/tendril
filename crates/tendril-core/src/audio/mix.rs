@@ -22,6 +22,10 @@ pub async fn create_instrumental(
         .arg(other)
         .args([
             "-filter_complex",
+            // `normalize=0` is the critical bit: it disables amix's default
+            // 1/N divisor and produces a true sample-accurate sum, which is
+            // what Demucs stems require (vocals+drums+bass+other == original).
+            // Requires ffmpeg >= 4.4; the bundled binary is well past that.
             "amix=inputs=3:duration=longest:normalize=0",
         ])
         .args(super::convert::codec_args(format))

@@ -1,4 +1,7 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::atomic::Ordering;
 
 use slint::{ComponentHandle, Model};
 use tokio::runtime::Handle;
@@ -8,6 +11,16 @@ use tendril_core::progress::PipelineStage;
 
 use crate::state::SharedState;
 use crate::MainWindow;
+
+thread_local! {
+    /// UI-thread-only cache of decoded queue thumbnails keyed by
+    /// `JobSource::thumbnail_key()`. `slint::Image` is `!Send`, but every site
+    /// that builds the queue model already runs on the UI thread (Slint
+    /// callbacks, the progress timer, and `invoke_from_event_loop` closures),
+    /// so a thread-local cache is sufficient and avoids needing `Send`.
+    static QUEUE_THUMB_CACHE: RefCell<HashMap<String, slint::Image>> =
+        RefCell::new(HashMap::new());
+}
 
 /// Wire all Slint callbacks to their Rust implementations.
 pub fn connect_callbacks(window: &MainWindow, state: SharedState, rt: Handle) {
@@ -21,6 +34,28 @@ pub fn connect_callbacks(window: &MainWindow, state: SharedState, rt: Handle) {
     connect_update_all_deps(window, state.clone(), rt.clone());
     connect_browse_output(window, state.clone());
     connect_file_dropped(window, state, rt);
+}
+
+/// Build the queue model using the UI-thread thumbnail cache. Decodes JPEGs
+/// only on cache miss (avoids re-decoding on every 250ms timer tick) and
+/// evicts entries for jobs no longer in the queue.
+///
+/// MUST be called from the UI thread.
+fn build_queue_model(
+    queue: &tendril_core::pipeline::queue::JobQueue,
+    raw_thumbnails: &HashMap<String, Vec<u8>>,
+) -> slint::ModelRc<crate::QueueItemData> {
+    QUEUE_THUMB_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+
+        // Evict entries for jobs no longer in the queue so memory does not
+        // grow unboundedly with session length.
+        let live_keys: std::collections::HashSet<String> =
+            queue.iter().map(|j| j.source.thumbnail_key()).collect();
+        cache.retain(|k, _| live_keys.contains(k));
+
+        crate::models::queue_items_model_with_cache(queue, raw_thumbnails, &mut cache)
+    })
 }
 
 /// Populate initial dependency status on the UI.
@@ -115,7 +150,7 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(window) = weak_c.upgrade() {
                         let s = state_c.lock().unwrap();
-                        let model = crate::models::queue_items_model(&s.queue, &s.thumbnail_cache);
+                        let model = build_queue_model(&s.queue, &s.thumbnail_cache);
                         window.set_queue_items(model);
                     }
                 });
@@ -138,7 +173,7 @@ pub fn start_progress_timer(window: &MainWindow, state: SharedState) {
             if let Some(window) = weak.upgrade() {
                 let s = state.lock().unwrap();
                 if !s.queue.is_empty() {
-                    let model = crate::models::queue_items_model(&s.queue, &s.thumbnail_cache);
+                    let model = build_queue_model(&s.queue, &s.thumbnail_cache);
                     window.set_queue_items(model);
                 }
             }
@@ -157,11 +192,15 @@ fn connect_search(window: &MainWindow, state: SharedState, rt: Handle) {
         let weak = window.as_weak();
         let weak_clear = window.as_weak();
         let timer = debounce_timer.clone();
+        let state_for_short = state.clone();
 
         window.on_search_changed(move |query| {
             let query = query.to_string();
             if query.trim().len() < 2 {
                 timer.stop();
+                // Invalidate any in-flight search/thumbnail fetch so its
+                // results don't land after the user has cleared the field.
+                bump_search_generation(&state_for_short);
                 if let Some(w) = weak_clear.upgrade() {
                     w.set_searching(false);
                     w.set_results_collapsing(true);
@@ -194,15 +233,39 @@ fn connect_search(window: &MainWindow, state: SharedState, rt: Handle) {
             timer.stop();
             let query = query.to_string();
             if query.trim().is_empty() {
+                bump_search_generation(&state);
                 return;
             }
             perform_search(query, state.clone(), weak.clone(), rt.clone());
         });
     }
 
+    // Explicit clear (Escape key or close button) — cancel any in-flight work
+    {
+        let state = state.clone();
+        window.on_search_cleared(move || {
+            bump_search_generation(&state);
+        });
+    }
+}
+
+/// Increment the search-generation counter so any in-flight search or
+/// thumbnail-fetch task with an older generation will skip its mutations.
+fn bump_search_generation(state: &SharedState) {
+    let s = state.lock().unwrap();
+    s.search_generation.fetch_add(1, Ordering::SeqCst);
 }
 
 fn perform_search(query: String, state: SharedState, weak: slint::Weak<MainWindow>, rt: Handle) {
+    // Bump the generation: any in-flight search or thumbnail fetch with an
+    // older token will see this new value and bail out before mutating
+    // shared state or the UI.
+    let (my_gen, gen_counter) = {
+        let s = state.lock().unwrap();
+        let new_gen = s.search_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        (new_gen, s.search_generation.clone())
+    };
+
     {
         let weak = weak.clone();
         let _ = slint::invoke_from_event_loop(move || {
@@ -216,12 +279,21 @@ fn perform_search(query: String, state: SharedState, weak: slint::Weak<MainWindo
         tracing::info!("Searching for: {query}");
         match tendril_core::youtube::search::search(&query).await {
             Ok(results) => {
+                // Drop stale results.
+                if gen_counter.load(Ordering::SeqCst) != my_gen {
+                    tracing::debug!("Discarding stale search results for: {query}");
+                    return;
+                }
+
                 let count = results.len();
 
-                // Store results in state immediately (before UI update)
-                // so fetch_thumbnails can read them.
+                // Store results in state (recheck generation under the lock
+                // to avoid racing a concurrent newer search).
                 {
                     let mut s = state.lock().unwrap();
+                    if s.search_generation.load(Ordering::SeqCst) != my_gen {
+                        return;
+                    }
                     s.search_results = results.clone();
                 }
 
@@ -230,7 +302,13 @@ fn perform_search(query: String, state: SharedState, weak: slint::Weak<MainWindo
                 };
 
                 let weak_inner = weak.clone();
+                let gen_for_ui = gen_counter.clone();
                 let _ = slint::invoke_from_event_loop(move || {
+                    // Final guard on the UI thread: a newer search may have
+                    // bumped the generation between our spawn and now.
+                    if gen_for_ui.load(Ordering::SeqCst) != my_gen {
+                        return;
+                    }
                     if let Some(window) = weak_inner.upgrade() {
                         window.set_searching(false);
                         window.set_results_collapsing(false);
@@ -241,12 +319,19 @@ fn perform_search(query: String, state: SharedState, weak: slint::Weak<MainWindo
                     }
                 });
 
-                // Fetch all thumbnails
-                fetch_thumbnails(&state, &weak, 0, count).await;
+                // Fetch all thumbnails — gated by the same generation token.
+                fetch_thumbnails(&state, &weak, 0, count, my_gen, &gen_counter).await;
             }
             Err(e) => {
                 tracing::error!("Search failed: {e}");
+                if gen_counter.load(Ordering::SeqCst) != my_gen {
+                    return;
+                }
+                let gen_for_ui = gen_counter.clone();
                 let _ = slint::invoke_from_event_loop(move || {
+                    if gen_for_ui.load(Ordering::SeqCst) != my_gen {
+                        return;
+                    }
                     if let Some(window) = weak.upgrade() {
                         window.set_searching(false);
                         window.set_status_message(
@@ -260,14 +345,25 @@ fn perform_search(query: String, state: SharedState, weak: slint::Weak<MainWindo
 }
 
 /// Fetch and apply thumbnails for results[start..start+count].
+///
+/// Gated by `my_gen`: if a newer search/clear has bumped the counter, the
+/// fetch silently bails out so stale thumbnails can't be pinned to the wrong
+/// rows of a freshly-replaced result list.
 async fn fetch_thumbnails(
     state: &SharedState,
     weak: &slint::Weak<MainWindow>,
     start: usize,
     count: usize,
+    my_gen: u64,
+    gen_counter: &std::sync::Arc<std::sync::atomic::AtomicU64>,
 ) {
+    // Snapshot the batch under the lock with a generation check so we don't
+    // index into a freshly-replaced search_results.
     let batch: Vec<_> = {
         let s = state.lock().unwrap();
+        if s.search_generation.load(Ordering::SeqCst) != my_gen {
+            return;
+        }
         s.search_results.iter().skip(start).take(count).cloned().collect()
     };
 
@@ -286,9 +382,17 @@ async fn fetch_thumbnails(
         .collect();
     let thumbnail_bytes = futures::future::join_all(futs).await;
 
-    // Cache
+    if gen_counter.load(Ordering::SeqCst) != my_gen {
+        return;
+    }
+
+    // Cache (still useful even if we don't push to UI — the bytes are keyed
+    // by video_id, not row index, so they remain correct).
     {
         let mut s = state.lock().unwrap();
+        if s.search_generation.load(Ordering::SeqCst) != my_gen {
+            return;
+        }
         for (vid, bytes) in video_ids.iter().zip(thumbnail_bytes.iter()) {
             if let Some(data) = bytes {
                 s.thumbnail_cache.insert(vid.clone(), data.clone());
@@ -308,9 +412,18 @@ async fn fetch_thumbnails(
         .await
         .unwrap_or_default();
 
-    // Apply to UI (cheap — just wrapping pixel buffers into Slint Images)
+    if gen_counter.load(Ordering::SeqCst) != my_gen {
+        return;
+    }
+
+    // Apply to UI (cheap — just wrapping pixel buffers into Slint Images).
     let weak = weak.clone();
+    let gen_for_ui = gen_counter.clone();
     let _ = slint::invoke_from_event_loop(move || {
+        // Final UI-thread guard: a newer search may have replaced the model.
+        if gen_for_ui.load(Ordering::SeqCst) != my_gen {
+            return;
+        }
         if let Some(window) = weak.upgrade() {
             let model = window.get_search_results();
             let Some(vec_model) = model
@@ -351,7 +464,7 @@ fn connect_enqueue(window: &MainWindow, state: SharedState) {
             tracing::info!("Enqueued job {id}");
         }
         if let Some(window) = weak.upgrade() {
-            let model = crate::models::queue_items_model(&state.queue, &state.thumbnail_cache);
+            let model = build_queue_model(&state.queue, &state.thumbnail_cache);
             window.set_queue_items(model);
 
             // Phase 1: Highlight the clicked row, clear search text
@@ -402,7 +515,7 @@ fn connect_remove(window: &MainWindow, state: SharedState) {
         state.queue.remove(job_id as u64);
         tracing::info!("Removed job {job_id}");
         if let Some(window) = weak.upgrade() {
-            let model = crate::models::queue_items_model(&state.queue, &state.thumbnail_cache);
+            let model = build_queue_model(&state.queue, &state.thumbnail_cache);
             window.set_queue_items(model);
         }
     });
@@ -508,13 +621,18 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
 
                 match result {
                     Ok(()) => {
-                        let statuses = mgr.check_status();
+                        // Use check_updates so latest_version / update_available
+                        // get refreshed alongside install state. Without this,
+                        // the modal goes blank after a download completes.
+                        let statuses = mgr.check_updates().await;
                         let all_installed = statuses.iter().all(|s| s.state != tendril_core::deps::DepState::Missing);
+                        let any_updates = statuses.iter().any(|s| s.update_available);
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(w) = weak.upgrade() {
                                 w.set_deps_downloading(false);
                                 w.set_dep_items(dep_status_model(&statuses));
                                 w.set_deps_all_installed(all_installed);
+                                w.set_deps_any_updates(any_updates);
                                 w.set_status_message("Ready".into());
                             }
                         });
@@ -708,7 +826,7 @@ fn connect_file_dropped(window: &MainWindow, state: SharedState, rt: Handle) {
         let source = tendril_core::pipeline::job::JobSource::LocalFile { path: path.clone() };
         s.queue.enqueue(source);
         if let Some(w) = weak.upgrade() {
-            let model = crate::models::queue_items_model(&s.queue, &s.thumbnail_cache);
+            let model = build_queue_model(&s.queue, &s.thumbnail_cache);
             w.set_queue_items(model);
         }
 
@@ -726,7 +844,7 @@ fn connect_file_dropped(window: &MainWindow, state: SharedState, rt: Handle) {
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(w) = weak.upgrade() {
                         let s = state.lock().unwrap();
-                        let model = crate::models::queue_items_model(&s.queue, &s.thumbnail_cache);
+                        let model = build_queue_model(&s.queue, &s.thumbnail_cache);
                         w.set_queue_items(model);
                     }
                 });

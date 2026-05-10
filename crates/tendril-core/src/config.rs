@@ -83,8 +83,15 @@ impl Default for Config {
 
 impl Config {
     const FILENAME: &str = "settings.toml";
+    const BAD_FILENAME: &str = "settings.toml.bad";
+    const TMP_FILENAME: &str = "settings.toml.tmp";
 
     /// Load config from the platform config directory, or return defaults.
+    ///
+    /// If the file is missing, defaults are returned. If the file exists but
+    /// fails to parse (corrupt/truncated), it is moved aside as
+    /// `settings.toml.bad` and defaults are returned, so the app does not
+    /// brick at startup.
     pub fn load(config_dir: &Path) -> Result<Self, ConfigError> {
         let path = config_dir.join(Self::FILENAME);
         if !path.exists() {
@@ -94,18 +101,107 @@ impl Config {
             path: path.clone(),
             source: e,
         })?;
-        let config: Config = toml::from_str(&text)?;
-        Ok(config)
+        match toml::from_str::<Config>(&text) {
+            Ok(config) => Ok(config),
+            Err(e) => {
+                let bad_path = config_dir.join(Self::BAD_FILENAME);
+                tracing::warn!(
+                    "Failed to parse {}: {}. Moving aside to {} and using defaults.",
+                    path.display(),
+                    e,
+                    bad_path.display()
+                );
+                if let Err(rename_err) = std::fs::rename(&path, &bad_path) {
+                    tracing::warn!(
+                        "Could not move corrupt config aside ({}): {}",
+                        bad_path.display(),
+                        rename_err
+                    );
+                }
+                Ok(Self::default())
+            }
+        }
     }
 
-    /// Persist config to the platform config directory.
+    /// Persist config to the platform config directory atomically.
+    ///
+    /// Writes to `settings.toml.tmp` in the same directory, then renames
+    /// over `settings.toml`. Same-directory rename is atomic on POSIX and
+    /// reliable on Windows when the target isn't locked. The `.tmp` file
+    /// is removed on serialization or write failure to avoid leaving stale
+    /// junk behind.
     pub fn save(&self, config_dir: &Path) -> Result<(), ConfigError> {
         let path = config_dir.join(Self::FILENAME);
-        let text = toml::to_string_pretty(self)?;
-        std::fs::write(&path, text).map_err(|e| ConfigError::Write {
-            path: path.clone(),
-            source: e,
-        })?;
+        let tmp_path = config_dir.join(Self::TMP_FILENAME);
+        let text = match toml::to_string_pretty(self) {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(ConfigError::Serialize(e));
+            }
+        };
+        if let Err(e) = std::fs::write(&tmp_path, &text) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(ConfigError::Write {
+                path: tmp_path,
+                source: e,
+            });
+        }
+        if let Err(e) = std::fs::rename(&tmp_path, &path) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(ConfigError::Write {
+                path,
+                source: e,
+            });
+        }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Build a unique temp directory under `std::env::temp_dir()` without
+    /// pulling in the `tempfile` crate. Caller is responsible for cleanup.
+    fn fresh_test_dir(label: &str) -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("tendril-config-test-{label}-{pid}-{n}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        dir
+    }
+
+    #[test]
+    fn save_is_atomic_and_round_trips() {
+        let dir = fresh_test_dir("save");
+        let cfg = Config::default();
+        cfg.save(&dir).expect("save");
+        // .tmp file should not linger after a successful save.
+        assert!(!dir.join(Config::TMP_FILENAME).exists());
+        assert!(dir.join(Config::FILENAME).exists());
+        let loaded = Config::load(&dir).expect("load");
+        assert_eq!(loaded.output_format, cfg.output_format);
+        assert_eq!(loaded.gpu_backend, cfg.gpu_backend);
+        assert_eq!(loaded.model_variant, cfg.model_variant);
+        assert_eq!(loaded.preserve_full_mix, cfg.preserve_full_mix);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_recovers_from_corrupt_file() {
+        let dir = fresh_test_dir("corrupt");
+        let path = dir.join(Config::FILENAME);
+        std::fs::write(&path, "this is = not valid = toml === !!!").expect("write garbage");
+        let cfg = Config::load(&dir).expect("load should not error on corrupt file");
+        // Defaults returned.
+        assert_eq!(cfg.output_format, Config::default().output_format);
+        // Corrupt file moved aside.
+        assert!(dir.join(Config::BAD_FILENAME).exists());
+        assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

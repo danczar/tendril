@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 
 use tendril_core::config::Config;
@@ -15,6 +16,9 @@ pub struct AppState {
     pub search_results: Vec<SearchResult>,
     /// Raw thumbnail bytes keyed by video_id (Send-safe, decoded on UI thread).
     pub thumbnail_cache: HashMap<String, Vec<u8>>,
+    /// Monotonic counter that invalidates in-flight searches and thumbnail
+    /// fetches. Bumped on every new search dispatch and on clear.
+    pub search_generation: Arc<AtomicU64>,
 }
 
 impl AppState {
@@ -25,6 +29,7 @@ impl AppState {
             queue: JobQueue::new(),
             search_results: Vec::new(),
             thumbnail_cache: HashMap::new(),
+            search_generation: Arc::new(AtomicU64::new(0)),
         }
     }
 }

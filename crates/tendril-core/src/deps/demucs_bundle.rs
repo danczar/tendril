@@ -1,5 +1,7 @@
 use std::path::PathBuf;
+use std::process::Stdio;
 
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::watch;
 
 use crate::deps::versions::InstalledVersions;
@@ -159,23 +161,19 @@ pub async fn ensure(
     // ── Step 3: pip install torch + demucs ──
     send("PyTorch", 0.35, "Installing PyTorch (this may take a few minutes)...");
 
-    install_torch(&python_bin).await?;
+    install_torch(&python_bin, progress_tx.as_ref()).await?;
 
     send("demucs", 0.75, "Installing demucs...");
     tracing::info!("Installing demucs...");
 
-    let pip_demucs = tokio::process::Command::new(&python_bin)
-        .args(["-m", "pip", "install", "--no-input", "demucs", "soundfile"])
-        .output()
-        .await
-        .map_err(DependencyError::Extract)?;
-
-    if !pip_demucs.status.success() {
-        let stderr = String::from_utf8_lossy(&pip_demucs.stderr);
-        return Err(DependencyError::GitHubApi {
-            message: format!("pip install demucs failed: {stderr}"),
-        });
-    }
+    run_pip_install_streaming(
+        &python_bin,
+        &["demucs", "soundfile"],
+        "demucs",
+        progress_tx.as_ref(),
+        0.75,
+    )
+    .await?;
 
     // ── Step 4: Record versions ──
     send("demucs", 0.95, "Recording versions...");
@@ -206,18 +204,14 @@ async fn install_demucs(
         });
     }
 
-    let output = tokio::process::Command::new(python_bin)
-        .args(["-m", "pip", "install", "--no-input", "demucs", "soundfile"])
-        .output()
-        .await
-        .map_err(DependencyError::Extract)?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(DependencyError::GitHubApi {
-            message: format!("pip install demucs failed: {stderr}"),
-        });
-    }
+    run_pip_install_streaming(
+        python_bin,
+        &["demucs", "soundfile"],
+        "demucs",
+        progress_tx.as_ref(),
+        0.5,
+    )
+    .await?;
 
     let mut versions = InstalledVersions::load(&dirs.data_dir);
     versions.demucs = query_python_version(python_bin, "demucs").await;
@@ -241,18 +235,14 @@ pub async fn update_demucs(dirs: &AppDirs) -> Result<(), DependencyError> {
         return Err(DependencyError::BinaryNotFound { path: python_bin });
     }
 
-    let output = tokio::process::Command::new(&python_bin)
-        .args(["-m", "pip", "install", "--no-input", "--upgrade", "demucs"])
-        .output()
-        .await
-        .map_err(DependencyError::Extract)?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(DependencyError::GitHubApi {
-            message: format!("pip upgrade demucs failed: {stderr}"),
-        });
-    }
+    run_pip_install_streaming(
+        &python_bin,
+        &["--upgrade", "demucs"],
+        "demucs",
+        None,
+        0.0,
+    )
+    .await?;
 
     let mut versions = InstalledVersions::load(&dirs.data_dir);
     versions.demucs = query_python_version(&python_bin, "demucs").await;
@@ -268,54 +258,42 @@ pub async fn update_demucs(dirs: &AppDirs) -> Result<(), DependencyError> {
 /// build from PyPI.
 async fn install_torch(
     python_bin: &std::path::Path,
+    progress_tx: Option<&watch::Sender<DownloadProgress>>,
 ) -> Result<(), DependencyError> {
     if cfg!(target_os = "macos") {
         // macOS: install from PyPI (includes MPS support on Apple Silicon)
         tracing::info!("Installing PyTorch from PyPI (macOS)");
-        let output = tokio::process::Command::new(python_bin)
-            .args(["-m", "pip", "install", "--no-input", "torch"])
-            .output()
-            .await
-            .map_err(DependencyError::Extract)?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(DependencyError::GitHubApi {
-                message: format!("pip install torch failed: {stderr}"),
-            });
-        }
+        run_pip_install_streaming(
+            python_bin,
+            &["torch"],
+            "PyTorch",
+            progress_tx,
+            0.4,
+        )
+        .await?;
     } else {
         // Windows/Linux: install CUDA-enabled PyTorch (falls back to CPU automatically)
         let index_url = "https://download.pytorch.org/whl/cu126";
         tracing::info!("Installing CUDA-enabled PyTorch from {index_url}");
-
-        let output = tokio::process::Command::new(python_bin)
-            .args(["-m", "pip", "install", "--no-input", "torch", "--index-url", index_url])
-            .output()
-            .await
-            .map_err(DependencyError::Extract)?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(DependencyError::GitHubApi {
-                message: format!("pip install torch failed: {stderr}"),
-            });
-        }
+        run_pip_install_streaming(
+            python_bin,
+            &["torch", "--index-url", index_url],
+            "PyTorch",
+            progress_tx,
+            0.4,
+        )
+        .await?;
     }
 
     // torchcodec from PyPI (works with any torch variant)
-    let output = tokio::process::Command::new(python_bin)
-        .args(["-m", "pip", "install", "--no-input", "torchcodec"])
-        .output()
-        .await
-        .map_err(DependencyError::Extract)?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(DependencyError::GitHubApi {
-            message: format!("pip install torchcodec failed: {stderr}"),
-        });
-    }
+    run_pip_install_streaming(
+        python_bin,
+        &["torchcodec"],
+        "PyTorch",
+        progress_tx,
+        0.7,
+    )
+    .await?;
 
     Ok(())
 }
@@ -330,6 +308,103 @@ async fn query_version(bin: &std::path::Path, args: &[&str]) -> Option<String> {
     let text = String::from_utf8_lossy(&output.stdout);
     // "Python 3.13.12" → "3.13.12"
     text.split_whitespace().last().map(String::from)
+}
+
+/// Run `python -m pip install ...` and stream stdout/stderr line-by-line,
+/// forwarding any "Downloading <wheel>" / "Collecting <pkg>" lines as
+/// progress messages so the UI stops looking frozen during the
+/// multi-minute torch install.
+///
+/// Returns Ok on success, Err with the captured stderr on failure.
+async fn run_pip_install_streaming(
+    python_bin: &std::path::Path,
+    args: &[&str],
+    tool_label: &str,
+    progress_tx: Option<&watch::Sender<DownloadProgress>>,
+    base_fraction: f32,
+) -> Result<(), DependencyError> {
+    let mut full_args = vec!["-m", "pip", "install", "--no-input"];
+    full_args.extend_from_slice(args);
+
+    let mut child = tokio::process::Command::new(python_bin)
+        .args(&full_args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(DependencyError::Extract)?;
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    // Spawn a task per stream so they drain in parallel and pip's
+    // pipe buffers never block the child.
+    let tool_for_out = tool_label.to_string();
+    let tx_for_out = progress_tx.cloned();
+    let stdout_task = tokio::spawn(async move {
+        if let Some(s) = stdout {
+            let mut lines = BufReader::new(s).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::debug!(target: "deps::pip", "{line}");
+                forward_pip_line(&line, &tool_for_out, &tx_for_out, base_fraction);
+            }
+        }
+    });
+
+    let mut stderr_buf = String::new();
+    let stderr_task = tokio::spawn(async move {
+        let mut buf = String::new();
+        if let Some(s) = stderr {
+            let mut lines = BufReader::new(s).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::debug!(target: "deps::pip", "stderr: {line}");
+                buf.push_str(&line);
+                buf.push('\n');
+            }
+        }
+        buf
+    });
+
+    let status = child.wait().await.map_err(DependencyError::Extract)?;
+    let _ = stdout_task.await;
+    if let Ok(buf) = stderr_task.await {
+        stderr_buf = buf;
+    }
+
+    if !status.success() {
+        return Err(DependencyError::GitHubApi {
+            message: format!(
+                "pip install {} failed: {}",
+                args.join(" "),
+                stderr_buf.trim()
+            ),
+        });
+    }
+
+    Ok(())
+}
+
+/// Inspect a pip stdout line and forward useful progress info to the UI.
+fn forward_pip_line(
+    line: &str,
+    tool: &str,
+    tx: &Option<watch::Sender<DownloadProgress>>,
+    base_fraction: f32,
+) {
+    let trimmed = line.trim();
+    let interesting = trimmed.starts_with("Downloading ")
+        || trimmed.starts_with("Collecting ")
+        || trimmed.starts_with("Installing collected packages");
+
+    if !interesting {
+        return;
+    }
+    if let Some(tx) = tx {
+        let _ = tx.send(DownloadProgress {
+            tool: tool.into(),
+            fraction: base_fraction,
+            message: trimmed.to_string(),
+        });
+    }
 }
 
 /// Run `python -c "import <pkg>; print(<pkg>.__version__)"` to get package version.

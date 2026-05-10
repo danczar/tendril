@@ -57,6 +57,7 @@ export component MainWindow inherits Window {
     // ── Callbacks to Rust ──
     callback search(string);
     callback search-changed(string);
+    callback search-cleared();
     callback enqueue-result(int);
     callback open-result-folder(int);
     callback remove-job(int);
@@ -155,7 +156,10 @@ export component MainWindow inherits Window {
             searching: root.searching;
             changed(query) => { root.search-changed(query); }
             submitted(query) => { root.search(query); }
-            cleared => { root.search-results = []; }
+            cleared => {
+                root.search-results = [];
+                root.search-cleared();
+            }
         }
 
         // ── Scrollable content ──

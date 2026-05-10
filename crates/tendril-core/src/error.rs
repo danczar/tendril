@@ -95,6 +95,9 @@ pub enum SplitterError {
 
     #[error("unsupported model variant: {0}")]
     UnsupportedModel(String),
+
+    #[error("split cancelled")]
+    Cancelled,
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -13,34 +13,51 @@ const FFPROBE_BINARY_NAME: &str = "ffprobe.exe";
 #[cfg(not(target_os = "windows"))]
 const FFPROBE_BINARY_NAME: &str = "ffprobe";
 
-/// Ensure ffmpeg and ffprobe are available. Checks bin_dir first, then
-/// system PATH, then downloads from GitHub.
+/// Ensure ffmpeg and ffprobe are available, returning the path to use.
 ///
-/// On Windows, downloads the shared FFmpeg build (with DLLs) from
-/// BtbN/FFmpeg-Builds so that torchcodec can find the FFmpeg libraries.
-/// On macOS/Linux, downloads static binaries from eugeneware/ffmpeg-static.
+/// Priority:
+/// - **macOS/Linux**: system PATH > managed > download. Prefer whatever the
+///   user already has installed; only fall back to a managed copy if no
+///   system ffmpeg is on PATH.
+/// - **Windows**: managed > system PATH > download. The Windows managed
+///   build ships shared-library DLLs that torchcodec needs at runtime; if
+///   they're already there, prefer them over any system ffmpeg.
+///
+/// Managed downloads come from BtbN/FFmpeg-Builds (Windows shared build) or
+/// eugeneware/ffmpeg-static (macOS/Linux static).
 pub async fn ensure(
     client: &reqwest::Client,
     bin_dir: &Path,
 ) -> Result<PathBuf, DependencyError> {
-    let path = bin_dir.join(BINARY_NAME);
+    let managed_path = bin_dir.join(BINARY_NAME);
+    let managed_ok = is_install_complete(bin_dir);
+    let system = find_on_path(BINARY_NAME);
 
-    if is_install_complete(bin_dir) {
-        return Ok(path);
+    #[cfg(target_os = "windows")]
+    {
+        if managed_ok {
+            return Ok(managed_path);
+        }
+        if let Some(resolved) = system {
+            tracing::info!("Using system ffmpeg: {}", resolved.display());
+            return Ok(resolved);
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(resolved) = system {
+            tracing::info!("Using system ffmpeg: {}", resolved.display());
+            return Ok(resolved);
+        }
+        if managed_ok {
+            return Ok(managed_path.clone());
+        }
     }
 
-    // Check system PATH — resolve to absolute path so other tools can find it
-    if let Some(resolved) = find_on_path(BINARY_NAME) {
-        tracing::info!("Using system ffmpeg: {}", resolved.display());
-        return Ok(resolved);
-    }
-
-    // Download platform-appropriate build
     std::fs::create_dir_all(bin_dir).map_err(DependencyError::Extract)?;
     tracing::info!("Downloading ffmpeg...");
     download(client, bin_dir).await?;
-
-    Ok(path)
+    Ok(managed_path)
 }
 
 /// Check if the managed ffmpeg installation is complete.
@@ -63,14 +80,23 @@ fn is_install_complete(bin_dir: &Path) -> bool {
 
 /// Download ffmpeg and ffprobe using the platform-appropriate strategy.
 async fn download(client: &reqwest::Client, bin_dir: &Path) -> Result<(), DependencyError> {
+    download_into(client, bin_dir).await
+}
+
+/// Public alias used by the atomic update flow to download into a
+/// staging directory. Same behavior as the internal `download`.
+pub async fn download_into(
+    client: &reqwest::Client,
+    target_dir: &Path,
+) -> Result<(), DependencyError> {
     #[cfg(target_os = "windows")]
     {
-        return download_shared_build(client, bin_dir).await;
+        return download_shared_build(client, target_dir).await;
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        download_static_builds(client, bin_dir).await
+        download_static_builds(client, target_dir).await
     }
 }
 

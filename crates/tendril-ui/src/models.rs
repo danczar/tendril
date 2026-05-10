@@ -59,20 +59,33 @@ pub fn rgba_to_slint_image(rgba: &[u8], w: u32, h: u32) -> Image {
     Image::from_rgba8(buf)
 }
 
-/// Convert queue jobs into a Slint model.
-pub fn queue_items_model(
+/// Convert queue jobs into a Slint model, reusing decoded `Image`s from
+/// `decoded_cache` when present and decoding (then caching) on miss.
+///
+/// `decoded_cache` MUST live on the UI thread (`slint::Image` is `!Send`).
+pub fn queue_items_model_with_cache(
     queue: &tendril_core::pipeline::queue::JobQueue,
     thumbnail_cache: &std::collections::HashMap<String, Vec<u8>>,
+    decoded_cache: &mut std::collections::HashMap<String, Image>,
 ) -> ModelRc<QueueItemData> {
     let items: Vec<QueueItemData> = queue
         .iter()
         .map(|job| {
             let progress = job.progress_rx.borrow();
             let (stage_label, stage_color) = stage_display(&progress.stage);
-            let thumbnail = thumbnail_cache
-                .get(&job.source.thumbnail_key())
-                .and_then(|bytes| decode_image_bytes(bytes))
-                .unwrap_or_default();
+            let key = job.source.thumbnail_key();
+            let thumbnail = if let Some(img) = decoded_cache.get(&key) {
+                img.clone()
+            } else if let Some(bytes) = thumbnail_cache.get(&key) {
+                if let Some(img) = decode_image_bytes(bytes) {
+                    decoded_cache.insert(key, img.clone());
+                    img
+                } else {
+                    Image::default()
+                }
+            } else {
+                Image::default()
+            };
             QueueItemData {
                 job_id: job.id as i32,
                 title: SharedString::from(job.source.display_name()),
