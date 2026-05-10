@@ -150,9 +150,7 @@ async fn download_shared_build(
     let bin_dir_owned = bin_dir.to_path_buf();
     tokio::task::spawn_blocking(move || extract_zip_bin(&bytes, &bin_dir_owned))
         .await
-        .map_err(|e| {
-            DependencyError::Extract(std::io::Error::new(std::io::ErrorKind::Other, e))
-        })??;
+        .map_err(|e| DependencyError::Extract(std::io::Error::other(e)))??;
 
     tracing::info!("FFmpeg shared build installed to {}", bin_dir.display());
     Ok(())
@@ -167,12 +165,12 @@ async fn download_shared_build(
 fn extract_zip_bin(zip_bytes: &[u8], bin_dir: &Path) -> Result<(), DependencyError> {
     let reader = std::io::Cursor::new(zip_bytes);
     let mut archive = zip::ZipArchive::new(reader)
-        .map_err(|e| DependencyError::Extract(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| DependencyError::Extract(std::io::Error::other(e)))?;
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| {
-            DependencyError::Extract(std::io::Error::new(std::io::ErrorKind::Other, e))
-        })?;
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| DependencyError::Extract(std::io::Error::other(e)))?;
 
         let path = file.name().to_string();
 

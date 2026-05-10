@@ -36,7 +36,7 @@ pub async fn check_ffmpeg_latest(client: &reqwest::Client) -> Option<String> {
         let release = github_release::latest_release(client, "BtbN", "FFmpeg-Builds")
             .await
             .ok()?;
-        return Some(release.tag_name);
+        Some(release.tag_name)
     }
     #[cfg(not(target_os = "windows"))]
     {
