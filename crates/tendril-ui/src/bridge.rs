@@ -121,8 +121,8 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
 
                 match &result {
                     Ok(()) => {
-                        // Brief delay so user can see Done status
-                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                        // Brief delay so user can see Done status; 1s keeps batch throughput high.
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     }
                     Err(e) => {
                         let is_cancelled =
@@ -136,8 +136,8 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
                                 fraction: 0.0,
                                 message: e.to_string(),
                             });
-                            // Brief delay so user can see Failed status
-                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                            // Brief delay so user can see Failed status; 1s keeps batch throughput high.
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                         }
                     }
                 }
