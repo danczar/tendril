@@ -72,7 +72,7 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
         },
         DependencyStatus {
             name: "yt-dlp".into(),
-            state: if dirs.bin_dir().join(ytdlp_binary_name()).exists() {
+            state: if dirs.bin_dir().join(super::ytdlp_binary_name()).exists() {
                 DepState::Installed
             } else {
                 DepState::Missing
@@ -86,9 +86,9 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
             name: "ffmpeg".into(),
             state: if versions.ffmpeg_source == FfmpegSource::System {
                 DepState::System
-            } else if dirs.bin_dir().join(ffmpeg_binary_name()).exists() {
+            } else if dirs.bin_dir().join(super::ffmpeg_binary_name()).exists() {
                 DepState::Installed
-            } else if super::ffmpeg::find_on_path(ffmpeg_binary_name()).is_some() {
+            } else if super::ffmpeg::find_on_path(super::ffmpeg_binary_name()).is_some() {
                 DepState::System
             } else {
                 DepState::Missing
@@ -99,22 +99,4 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
             latest_version: None,
         },
     ]
-}
-
-#[cfg(target_os = "windows")]
-fn ytdlp_binary_name() -> &'static str {
-    "yt-dlp.exe"
-}
-#[cfg(not(target_os = "windows"))]
-fn ytdlp_binary_name() -> &'static str {
-    "yt-dlp"
-}
-
-#[cfg(target_os = "windows")]
-fn ffmpeg_binary_name() -> &'static str {
-    "ffmpeg.exe"
-}
-#[cfg(not(target_os = "windows"))]
-fn ffmpeg_binary_name() -> &'static str {
-    "ffmpeg"
 }

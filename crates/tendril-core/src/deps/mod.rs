@@ -401,19 +401,19 @@ async fn query_ffmpeg_version(dirs: &AppDirs) -> (Option<String>, versions::Ffmp
 }
 
 #[cfg(target_os = "windows")]
-fn ytdlp_binary_name() -> &'static str {
+pub fn ytdlp_binary_name() -> &'static str {
     "yt-dlp.exe"
 }
 #[cfg(not(target_os = "windows"))]
-fn ytdlp_binary_name() -> &'static str {
+pub fn ytdlp_binary_name() -> &'static str {
     "yt-dlp"
 }
 
 #[cfg(target_os = "windows")]
-fn ffmpeg_binary_name() -> &'static str {
+pub fn ffmpeg_binary_name() -> &'static str {
     "ffmpeg.exe"
 }
 #[cfg(not(target_os = "windows"))]
-fn ffmpeg_binary_name() -> &'static str {
+pub fn ffmpeg_binary_name() -> &'static str {
     "ffmpeg"
 }
