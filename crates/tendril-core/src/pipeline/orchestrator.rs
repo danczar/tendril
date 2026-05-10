@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use futures::future::try_join_all;
 use tokio::sync::watch;
 
 use crate::config::{GpuBackend, OutputFormat};
@@ -130,27 +131,30 @@ pub async fn run(
 
     let stem_paths = [&stems.vocals, &stems.drums, &stems.bass, &stems.other];
 
-    for (i, stem_path) in stem_paths.iter().enumerate() {
-        crate::audio::convert::convert(
-            &ctx.ffmpeg_bin,
-            stem_path,
-            ctx.output_format,
-            &final_dir,
-        )
+    // Each ffmpeg invocation is single-threaded for typical stem codecs, so
+    // run all 4 concurrently (~10s saved per job on multi-core machines).
+    // Progress is reported once at start and once after the batch completes
+    // rather than per-stem, since per-stem completion ordering with parallel
+    // futures isn't worth the extra plumbing for a few-second operation.
+    send(PipelineStage::Converting, 0.0, "Converting 4 stems...");
+
+    let convert_futs = stem_paths.iter().map(|stem_path| {
+        crate::audio::convert::convert(&ctx.ffmpeg_bin, stem_path, ctx.output_format, &final_dir)
+    });
+
+    try_join_all(convert_futs)
         .await
         .map_err(|e| PipelineError::StageFailed {
             stage: "convert".into(),
             message: e.to_string(),
         })?;
 
-        check_cancelled(&mut cancel_rx)?;
+    // Cancellation is checked once after the batch completes; a cancel signal
+    // arriving mid-batch lets the in-flight ffmpegs run a few extra seconds
+    // before we honor it. Acceptable tradeoff for the simpler control flow.
+    check_cancelled(&mut cancel_rx)?;
 
-        send(
-            PipelineStage::Converting,
-            (i + 1) as f32 / 4.0,
-            &format!("Converted {}/{}", i + 1, 4),
-        );
-    }
+    send(PipelineStage::Converting, 1.0, "Converted 4/4");
 
     // ── Stage 4: Create instrumental mix ──
     send(PipelineStage::Mixing, 0.0, "Creating instrumental mix...");
