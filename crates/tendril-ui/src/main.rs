@@ -115,9 +115,19 @@ fn main() -> Result<()> {
                 tracing::error!("Lightweight dependency setup failed: {e}");
             }
 
+            // Repopulate the dep list after the silent install — the
+            // synchronous `init_dep_status` call before this task ran
+            // off any stale yt-dlp version cached in versions.json.
+            let statuses = mgr.check_status();
             let demucs_ready = mgr.is_demucs_ready();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(w) = weak.upgrade() {
+                    w.set_dep_items(bridge::dep_status_model(&statuses));
+                    w.set_deps_all_installed(
+                        statuses
+                            .iter()
+                            .all(|s| s.state != tendril_core::deps::DepState::Missing),
+                    );
                     if demucs_ready {
                         w.set_status_message("Ready".into());
                     } else {

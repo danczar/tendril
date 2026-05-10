@@ -890,7 +890,7 @@ async fn extract_album_art(
 }
 
 /// Convert dependency statuses to a Slint model.
-fn dep_status_model(
+pub(crate) fn dep_status_model(
     statuses: &[tendril_core::deps::DependencyStatus],
 ) -> slint::ModelRc<crate::DepItemData> {
     let items: Vec<crate::DepItemData> = statuses
@@ -911,18 +911,35 @@ fn dep_status_model(
     slint::ModelRc::new(slint::VecModel::from(items))
 }
 
-/// Resolve ffmpeg binary path: managed bin_dir first, then system PATH,
-/// then a bare name as last resort. Note: this does NOT honor the
-/// platform-specific Windows-managed-first priority used by
-/// `deps::ffmpeg::ensure` — that's only relevant when downloads are
-/// possible. For pipeline invocation we just need *some* working binary.
+/// Resolve ffmpeg binary path with the same priority as `deps::ffmpeg::ensure`
+/// and `status::check_all`, so the pipeline runs the binary the UI advertises.
+///
+/// macOS/Linux: system PATH > managed > bare name.
+/// Windows: managed > system PATH > bare name (managed shared-build DLLs
+/// are required by torchcodec).
 fn resolve_ffmpeg(dirs: &tendril_core::dirs::AppDirs) -> std::path::PathBuf {
     let managed = dirs
         .bin_dir()
         .join(tendril_core::deps::ffmpeg_binary_name());
-    if managed.exists() {
-        return managed;
+    let system = tendril_core::deps::ffmpeg::find_on_path(tendril_core::deps::ffmpeg_binary_name());
+
+    #[cfg(target_os = "windows")]
+    {
+        if managed.exists() {
+            return managed;
+        }
+        if let Some(s) = system {
+            return s;
+        }
     }
-    tendril_core::deps::ffmpeg::find_on_path(tendril_core::deps::ffmpeg_binary_name())
-        .unwrap_or_else(|| std::path::PathBuf::from(tendril_core::deps::ffmpeg_binary_name()))
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(s) = system {
+            return s;
+        }
+        if managed.exists() {
+            return managed;
+        }
+    }
+    std::path::PathBuf::from(tendril_core::deps::ffmpeg_binary_name())
 }

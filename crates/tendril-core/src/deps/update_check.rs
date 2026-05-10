@@ -28,8 +28,9 @@ pub async fn check_ytdlp_latest(client: &reqwest::Client) -> Option<String> {
 /// binaries from eugeneware/ffmpeg-static. The latest-version source
 /// must mirror the download source so the update banner is honest.
 ///
-/// BtbN tag format is `n7.1` / `n7.1.1`; eugeneware uses `b7.1` or
-/// similar — both are handled by the version_compare normalization.
+/// BtbN tag format is `n7.1` / `n7.1.1`; eugeneware tags as `bX.Y.Z`
+/// (currently capped at `b6.1.1` — the upstream hasn't shipped 7.x).
+/// Both formats are normalized by `version_compare`.
 pub async fn check_ffmpeg_latest(client: &reqwest::Client) -> Option<String> {
     #[cfg(target_os = "windows")]
     {

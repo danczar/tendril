@@ -4,29 +4,24 @@ use serde::{Deserialize, Serialize};
 
 const FILENAME: &str = "versions.json";
 
-/// Source of the ffmpeg binary.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum FfmpegSource {
-    #[default]
-    Managed,
-    System,
-}
-
-/// Tracks installed versions of external dependencies.
+/// Tracks installed versions of dependencies that Tendril manages.
+///
+/// ffmpeg is intentionally absent: its state and version are derived
+/// live on every read (system PATH lookup + `ffmpeg -version` subprocess),
+/// so there is nothing to cache here. Persisting it caused stale-state
+/// bugs where a managed-era version string survived after the user
+/// installed a system ffmpeg, producing bogus "update available" arrows.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct InstalledVersions {
     pub python: Option<String>,
     pub torch: Option<String>,
     pub demucs: Option<String>,
     pub ytdlp: Option<String>,
-    pub ffmpeg: Option<String>,
-    #[serde(default)]
-    pub ffmpeg_source: FfmpegSource,
 }
 
 impl InstalledVersions {
     /// Load version info from disk, or return defaults if not found.
+    /// Unknown fields (e.g. legacy `ffmpeg`/`ffmpeg_source`) are ignored.
     pub fn load(data_dir: &Path) -> Self {
         let path = data_dir.join(FILENAME);
         if !path.exists() {

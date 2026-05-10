@@ -92,15 +92,13 @@ impl DependencyManager {
         Ok(())
     }
 
-    /// Re-query yt-dlp + ffmpeg version and ffmpeg source, then persist.
-    /// Called after every ensure path so versions.json doesn't drift when
-    /// the user installs/upgrades/removes a system ffmpeg.
+    /// Re-query yt-dlp version and persist.
+    ///
+    /// ffmpeg is intentionally not refreshed here — its state and version
+    /// are derived live in `status::check_all` on every read.
     async fn refresh_versions(&self) {
         let mut versions = versions::InstalledVersions::load(&self.dirs.data_dir);
         versions.ytdlp = query_ytdlp_version(&self.dirs).await;
-        let (ver, source) = query_ffmpeg_version(&self.dirs).await;
-        versions.ffmpeg = ver;
-        versions.ffmpeg_source = source;
         let _ = versions.save(&self.dirs.data_dir);
     }
 
@@ -125,13 +123,17 @@ impl DependencyManager {
     /// Check for available updates (hits network).
     ///
     /// Issues the three latest-version checks concurrently so a slow
-    /// upstream doesn't block the spinner.
+    /// upstream doesn't block the spinner. Skips the ffmpeg upstream
+    /// check whenever ffmpeg resolves to the system PATH — system
+    /// installs are the user's to manage, never Tendril's.
     pub async fn check_updates(&self) -> Vec<DependencyStatus> {
         let _guard = op_lock().lock().await;
         let mut statuses = self.check_status();
-        let versions = versions::InstalledVersions::load(&self.dirs.data_dir);
 
-        let check_ffmpeg = versions.ffmpeg_source != versions::FfmpegSource::System;
+        let check_ffmpeg = statuses
+            .iter()
+            .find(|s| s.name == "ffmpeg")
+            .is_some_and(|s| s.state == DepState::Installed);
 
         let (demucs_latest, ytdlp_latest, ffmpeg_latest) = tokio::join!(
             update_check::check_demucs_latest(&self.client),
@@ -238,10 +240,17 @@ impl DependencyManager {
     }
 
     /// Re-download latest ffmpeg atomically (only if managed, not system).
+    ///
+    /// Resolves "is this a managed ffmpeg?" the same way `check_status`
+    /// does, so the button's behavior matches what the UI shows.
     pub async fn update_ffmpeg(&self) -> Result<(), DependencyError> {
         let _guard = op_lock().lock().await;
-        let versions_pre = versions::InstalledVersions::load(&self.dirs.data_dir);
-        if versions_pre.ffmpeg_source == versions::FfmpegSource::System {
+        let ffmpeg_state = self
+            .check_status()
+            .into_iter()
+            .find(|s| s.name == "ffmpeg")
+            .map(|s| s.state);
+        if !matches!(ffmpeg_state, Some(DepState::Installed)) {
             return Ok(());
         }
 
@@ -310,11 +319,8 @@ impl DependencyManager {
         }
         let _ = tokio::fs::remove_dir_all(&staging).await;
 
-        let mut versions = versions::InstalledVersions::load(&self.dirs.data_dir);
-        let (ver, source) = query_ffmpeg_version(&self.dirs).await;
-        versions.ffmpeg = ver;
-        versions.ffmpeg_source = source;
-        let _ = versions.save(&self.dirs.data_dir);
+        // No persisted ffmpeg state to update — `check_status` will pick
+        // up the freshly-swapped binary on the next read.
         Ok(())
     }
 }
@@ -363,45 +369,6 @@ async fn query_ytdlp_version(dirs: &AppDirs) -> Option<String> {
         .await
         .ok()?;
     Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-async fn query_ffmpeg_version(dirs: &AppDirs) -> (Option<String>, versions::FfmpegSource) {
-    let managed = dirs.bin_dir().join(ffmpeg_binary_name());
-    let system = ffmpeg::find_on_path(ffmpeg_binary_name());
-
-    // Priority must mirror ffmpeg::ensure() so that the version recorded
-    // in versions.json reflects the binary the pipeline will actually use.
-    #[cfg(target_os = "windows")]
-    let (bin, source) = if managed.exists() {
-        (managed, versions::FfmpegSource::Managed)
-    } else if let Some(s) = system {
-        (s, versions::FfmpegSource::System)
-    } else {
-        return (None, versions::FfmpegSource::Managed);
-    };
-
-    #[cfg(not(target_os = "windows"))]
-    let (bin, source) = if let Some(s) = system {
-        (s, versions::FfmpegSource::System)
-    } else if managed.exists() {
-        (managed, versions::FfmpegSource::Managed)
-    } else {
-        return (None, versions::FfmpegSource::Managed);
-    };
-
-    let output = tokio::process::Command::new(&bin)
-        .arg("-version")
-        .output()
-        .await
-        .ok();
-
-    let version = output.and_then(|o| {
-        let text = String::from_utf8_lossy(&o.stdout);
-        // "ffmpeg version 7.1 ..." → "7.1"
-        text.split_whitespace().nth(2).map(String::from)
-    });
-
-    (version, source)
 }
 
 #[cfg(target_os = "windows")]

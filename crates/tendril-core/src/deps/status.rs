@@ -1,4 +1,6 @@
-use crate::deps::versions::{FfmpegSource, InstalledVersions};
+use std::path::{Path, PathBuf};
+
+use crate::deps::versions::InstalledVersions;
 use crate::dirs::AppDirs;
 
 /// Installation state of a dependency.
@@ -29,6 +31,11 @@ pub struct DependencyStatus {
 ///
 /// This is a fast, local-only check (no network). For update availability,
 /// call `update_check` functions separately.
+///
+/// ffmpeg state and version are derived **live** here: a PATH lookup plus
+/// a short `ffmpeg -version` subprocess (~10ms). Caching them in
+/// `versions.json` previously let stale state survive across the user
+/// installing or removing a system ffmpeg, producing bogus update arrows.
 pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
     let versions = InstalledVersions::load(&dirs.data_dir);
     let python_exists = dirs.python_bin().exists();
@@ -82,21 +89,67 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
             update_available: false,
             latest_version: None,
         },
-        DependencyStatus {
-            name: "ffmpeg".into(),
-            state: if versions.ffmpeg_source == FfmpegSource::System {
-                DepState::System
-            } else if dirs.bin_dir().join(super::ffmpeg_binary_name()).exists() {
-                DepState::Installed
-            } else if super::ffmpeg::find_on_path(super::ffmpeg_binary_name()).is_some() {
-                DepState::System
-            } else {
-                DepState::Missing
-            },
-            version: versions.ffmpeg.clone(),
-            updatable: versions.ffmpeg_source != FfmpegSource::System,
-            update_available: false,
-            latest_version: None,
-        },
+        ffmpeg_status(dirs),
     ]
+}
+
+/// Resolve ffmpeg state + version live, mirroring `ffmpeg::ensure()` priority:
+/// macOS/Linux prefer system; Windows prefers managed (its shared-build DLLs
+/// are required by torchcodec).
+fn ffmpeg_status(dirs: &AppDirs) -> DependencyStatus {
+    let managed = dirs.bin_dir().join(super::ffmpeg_binary_name());
+    let system = super::ffmpeg::find_on_path(super::ffmpeg_binary_name());
+
+    let (binary, state) = resolved(managed, system);
+
+    let (version, state) = match (binary, state) {
+        (Some(path), Some(s)) => (query_version(&path), s),
+        _ => (None, DepState::Missing),
+    };
+
+    DependencyStatus {
+        name: "ffmpeg".into(),
+        updatable: state == DepState::Installed,
+        update_available: false,
+        latest_version: None,
+        version,
+        state,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn resolved(managed: PathBuf, system: Option<PathBuf>) -> (Option<PathBuf>, Option<DepState>) {
+    if managed.exists() {
+        return (Some(managed), Some(DepState::Installed));
+    }
+    if let Some(s) = system {
+        return (Some(s), Some(DepState::System));
+    }
+    (None, None)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn resolved(managed: PathBuf, system: Option<PathBuf>) -> (Option<PathBuf>, Option<DepState>) {
+    if let Some(s) = system {
+        return (Some(s), Some(DepState::System));
+    }
+    if managed.exists() {
+        return (Some(managed), Some(DepState::Installed));
+    }
+    (None, None)
+}
+
+/// Run `<bin> -version` synchronously and pluck the version token.
+/// Output format: "ffmpeg version 7.1.1 Copyright …" → "7.1.1".
+fn query_version(bin: &Path) -> Option<String> {
+    let out = std::process::Command::new(bin)
+        .arg("-version")
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    text.split_whitespace().nth(2).map(String::from)
 }
