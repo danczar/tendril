@@ -401,11 +401,11 @@ async fn query_ffmpeg_version(
 }
 
 #[cfg(target_os = "windows")]
-fn ytdlp_binary_name() -> &'static str { "yt-dlp.exe" }
+pub fn ytdlp_binary_name() -> &'static str { "yt-dlp.exe" }
 #[cfg(not(target_os = "windows"))]
-fn ytdlp_binary_name() -> &'static str { "yt-dlp" }
+pub fn ytdlp_binary_name() -> &'static str { "yt-dlp" }
 
 #[cfg(target_os = "windows")]
-fn ffmpeg_binary_name() -> &'static str { "ffmpeg.exe" }
+pub fn ffmpeg_binary_name() -> &'static str { "ffmpeg.exe" }
 #[cfg(not(target_os = "windows"))]
-fn ffmpeg_binary_name() -> &'static str { "ffmpeg" }
+pub fn ffmpeg_binary_name() -> &'static str { "ffmpeg" }

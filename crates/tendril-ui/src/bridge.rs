@@ -95,7 +95,7 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
                 let ctx = {
                     let s = state.lock().unwrap();
                     PipelineContext {
-                        ytdlp_bin: s.dirs.bin_dir().join(ytdlp_binary_name()),
+                        ytdlp_bin: s.dirs.bin_dir().join(tendril_core::deps::ytdlp_binary_name()),
                         ffmpeg_bin: resolve_ffmpeg(&s.dirs),
                         python_bin: s.dirs.python_bin(),
                         models_dir: s.dirs.models_dir(),
@@ -899,40 +899,16 @@ fn dep_status_model(
     slint::ModelRc::new(slint::VecModel::from(items))
 }
 
-#[cfg(target_os = "windows")]
-fn ytdlp_binary_name() -> &'static str {
-    "yt-dlp.exe"
-}
-
-#[cfg(not(target_os = "windows"))]
-fn ytdlp_binary_name() -> &'static str {
-    "yt-dlp"
-}
-
-/// Resolve ffmpeg binary path: check bin_dir first, fall back to system PATH.
+/// Resolve ffmpeg binary path: managed bin_dir first, then system PATH,
+/// then a bare name as last resort. Note: this does NOT honor the
+/// platform-specific Windows-managed-first priority used by
+/// `deps::ffmpeg::ensure` — that's only relevant when downloads are
+/// possible. For pipeline invocation we just need *some* working binary.
 fn resolve_ffmpeg(dirs: &tendril_core::dirs::AppDirs) -> std::path::PathBuf {
-    let managed = dirs.bin_dir().join(ffmpeg_binary_name());
+    let managed = dirs.bin_dir().join(tendril_core::deps::ffmpeg_binary_name());
     if managed.exists() {
         return managed;
     }
-    // Resolve from system PATH to get an absolute path
-    let path_var = std::env::var_os("PATH").unwrap_or_default();
-    for dir in std::env::split_paths(&path_var) {
-        let candidate = dir.join(ffmpeg_binary_name());
-        if candidate.is_file() {
-            return candidate;
-        }
-    }
-    // Last resort — let OS try to resolve it
-    std::path::PathBuf::from(ffmpeg_binary_name())
-}
-
-#[cfg(target_os = "windows")]
-fn ffmpeg_binary_name() -> &'static str {
-    "ffmpeg.exe"
-}
-
-#[cfg(not(target_os = "windows"))]
-fn ffmpeg_binary_name() -> &'static str {
-    "ffmpeg"
+    tendril_core::deps::ffmpeg::find_on_path(tendril_core::deps::ffmpeg_binary_name())
+        .unwrap_or_else(|| std::path::PathBuf::from(tendril_core::deps::ffmpeg_binary_name()))
 }
