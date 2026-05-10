@@ -74,6 +74,44 @@ pub async fn run(
         JobSource::LocalFile { path } => path.clone(),
     };
 
+    // Build the final output dir up front so we can write the full mix
+    // before the (long) splitting stage runs.
+    let song_name =
+        crate::pipeline::job::output_folder_name(source.display_name(), source.video_id());
+    let final_dir = ctx.output_dir.join(&song_name);
+    tokio::fs::create_dir_all(&final_dir)
+        .await
+        .map_err(|e| PipelineError::StageFailed {
+            stage: "convert".into(),
+            message: e.to_string(),
+        })?;
+
+    let ext = ctx.output_format.extension();
+
+    // ── Preserve full mix (optional) ──
+    // Written first so the user has a usable artifact even if a later
+    // stage fails or is cancelled. Source is the lossless download (or
+    // the user's original local file), so this is a clean reencode.
+    if ctx.preserve_full_mix {
+        check_cancelled(&cancel_rx)?;
+        send(PipelineStage::Downloading, 1.0, "Saving full mix...");
+
+        let full_mix_path = final_dir.join(format!("full_mix.{ext}"));
+        crate::audio::convert::convert_to(
+            &ctx.ffmpeg_bin,
+            &audio_path,
+            ctx.output_format,
+            &full_mix_path,
+        )
+        .await
+        .map_err(|e| PipelineError::StageFailed {
+            stage: "convert".into(),
+            message: e.to_string(),
+        })?;
+
+        check_cancelled(&cancel_rx)?;
+    }
+
     // ── Stage 2: Split stems ──
     send(PipelineStage::Splitting, 0.0, "Separating stems...");
 
@@ -119,16 +157,6 @@ pub async fn run(
         "Converting to output format...",
     );
 
-    let song_name =
-        crate::pipeline::job::output_folder_name(source.display_name(), source.video_id());
-    let final_dir = ctx.output_dir.join(&song_name);
-    tokio::fs::create_dir_all(&final_dir)
-        .await
-        .map_err(|e| PipelineError::StageFailed {
-            stage: "convert".into(),
-            message: e.to_string(),
-        })?;
-
     let stem_paths = [&stems.vocals, &stems.drums, &stems.bass, &stems.other];
 
     // Each ffmpeg invocation is single-threaded for typical stem codecs, so
@@ -159,24 +187,7 @@ pub async fn run(
     // ── Stage 4: Create instrumental mix ──
     send(PipelineStage::Mixing, 0.0, "Creating instrumental mix...");
 
-    let ext = ctx.output_format.extension();
     let instrumental_path = final_dir.join(format!("instrumental.{ext}"));
-
-    // ── Preserve full mix (optional) ──
-    if ctx.preserve_full_mix {
-        let full_mix_path = final_dir.join(format!("full_mix.{ext}"));
-        crate::audio::convert::convert_to(
-            &ctx.ffmpeg_bin,
-            &audio_path,
-            ctx.output_format,
-            &full_mix_path,
-        )
-        .await
-        .map_err(|e| PipelineError::StageFailed {
-            stage: "convert".into(),
-            message: e.to_string(),
-        })?;
-    }
 
     crate::audio::mix::create_instrumental(
         &ctx.ffmpeg_bin,
@@ -212,16 +223,16 @@ fn check_cancelled(cancel_rx: &watch::Receiver<bool>) -> Result<(), PipelineErro
 /// Remove intermediate downloads and stem files after successful completion.
 async fn cleanup_temp_files(audio_path: &Path, stem_dir: &Path, source: &JobSource) {
     // Only delete downloaded files for YouTube sources (not user's local files)
-    if matches!(source, JobSource::Youtube { .. }) {
-        if let Err(e) = tokio::fs::remove_file(audio_path).await {
-            tracing::warn!("Failed to clean up download {}: {e}", audio_path.display());
-        }
+    if matches!(source, JobSource::Youtube { .. })
+        && let Err(e) = tokio::fs::remove_file(audio_path).await
+    {
+        tracing::warn!("Failed to clean up download {}: {e}", audio_path.display());
     }
 
     // Clean up intermediate stem WAVs
-    if stem_dir.exists() {
-        if let Err(e) = tokio::fs::remove_dir_all(stem_dir).await {
-            tracing::warn!("Failed to clean up stems {}: {e}", stem_dir.display());
-        }
+    if stem_dir.exists()
+        && let Err(e) = tokio::fs::remove_dir_all(stem_dir).await
+    {
+        tracing::warn!("Failed to clean up stems {}: {e}", stem_dir.display());
     }
 }

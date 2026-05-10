@@ -28,12 +28,11 @@ pub async fn convert(
     let ext = format.extension();
     let output_path = output_dir.join(format!("{stem}.{ext}"));
 
-    // If target is WAV and input is already WAV, just copy
-    if format == OutputFormat::Wav && input.extension().and_then(|e| e.to_str()) == Some("wav") {
+    if input.extension().and_then(|e| e.to_str()) == Some(ext) {
         tokio::fs::copy(input, &output_path)
             .await
             .map_err(|e| AudioError::Conversion {
-                message: format!("failed to copy WAV: {e}"),
+                message: format!("failed to copy {ext}: {e}"),
             })?;
         return Ok(output_path);
     }
@@ -69,11 +68,12 @@ pub async fn convert_to(
     format: OutputFormat,
     output_path: &Path,
 ) -> Result<PathBuf, AudioError> {
-    if format == OutputFormat::Wav && input.extension().and_then(|e| e.to_str()) == Some("wav") {
+    let ext = format.extension();
+    if input.extension().and_then(|e| e.to_str()) == Some(ext) {
         tokio::fs::copy(input, output_path)
             .await
             .map_err(|e| AudioError::Conversion {
-                message: format!("failed to copy WAV: {e}"),
+                message: format!("failed to copy {ext}: {e}"),
             })?;
         return Ok(output_path.to_path_buf());
     }

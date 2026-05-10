@@ -2,10 +2,11 @@ use std::path::{Path, PathBuf};
 
 use crate::error::YoutubeError;
 
-/// Download a YouTube video's audio as WAV using yt-dlp.
+/// Download a YouTube video's audio as FLAC at 44.1 kHz using yt-dlp.
 ///
-/// Grabs the highest quality audio-only stream and converts to WAV
-/// so stem-splitter-core can decode it without needing Opus/AAC codecs.
+/// We keep a lossless copy of the decoded source so the optional preserved
+/// full mix never goes through a lossy→lossy reencode, and we pin 44.1 kHz
+/// to match Demucs's native rate so the full mix and instrumental line up.
 pub async fn download_audio(
     ytdlp_bin: &Path,
     ffmpeg_dir: &Path,
@@ -18,7 +19,7 @@ pub async fn download_audio(
     })?;
 
     let url = format!("https://www.youtube.com/watch?v={video_id}");
-    let output_path = output_dir.join(format!("{video_id}.wav"));
+    let output_path = output_dir.join(format!("{video_id}.flac"));
     let output_template = output_dir.join(format!("{video_id}.%(ext)s"));
 
     let output = tokio::process::Command::new(ytdlp_bin)
@@ -27,9 +28,11 @@ pub async fn download_audio(
             "bestaudio",
             "-x",
             "--audio-format",
-            "wav",
+            "flac",
             "--audio-quality",
             "0",
+            "--postprocessor-args",
+            "ffmpeg:-ar 44100",
             "--no-playlist",
             "--ffmpeg-location",
             &ffmpeg_dir.to_string_lossy(),
@@ -57,7 +60,8 @@ pub async fn download_audio(
     } else {
         Err(YoutubeError::Download {
             url,
-            message: "WAV file not found after download — ffmpeg conversion may have failed".into(),
+            message: "FLAC file not found after download — ffmpeg conversion may have failed"
+                .into(),
         })
     }
 }
