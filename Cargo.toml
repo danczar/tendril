@@ -6,6 +6,12 @@ members = ["crates/tendril-core", "crates/tendril-ui"]
 version = "1.1.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
+rust-version = "1.85"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

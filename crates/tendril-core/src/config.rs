@@ -149,10 +149,7 @@ impl Config {
         }
         if let Err(e) = std::fs::rename(&tmp_path, &path) {
             let _ = std::fs::remove_file(&tmp_path);
-            return Err(ConfigError::Write {
-                path,
-                source: e,
-            });
+            return Err(ConfigError::Write { path, source: e });
         }
         Ok(())
     }

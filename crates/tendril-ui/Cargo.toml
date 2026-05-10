@@ -3,6 +3,9 @@ name = "tendril-ui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Slint UI for Tendril"
+repository = "https://github.com/danczar/tendril"
+readme = "../../README.md"
 
 [[bin]]
 name = "Tendril"

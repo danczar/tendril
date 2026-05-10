@@ -16,10 +16,7 @@ const ASSET_NAME: &str = "yt-dlp.exe";
 const ASSET_NAME: &str = "yt-dlp_linux";
 
 /// Ensure yt-dlp is present in `bin_dir`, downloading if necessary.
-pub async fn ensure(
-    client: &reqwest::Client,
-    bin_dir: &Path,
-) -> Result<PathBuf, DependencyError> {
+pub async fn ensure(client: &reqwest::Client, bin_dir: &Path) -> Result<PathBuf, DependencyError> {
     let path = bin_dir.join(BINARY_NAME);
     if path.exists() {
         return Ok(path);
@@ -40,10 +37,7 @@ pub async fn ensure(
 ///
 /// This is the building block used by both `ensure` and the atomic
 /// update flow.
-pub async fn download_to(
-    client: &reqwest::Client,
-    dest: &Path,
-) -> Result<(), DependencyError> {
+pub async fn download_to(client: &reqwest::Client, dest: &Path) -> Result<(), DependencyError> {
     let release = github_release::latest_release(client, "yt-dlp", "yt-dlp").await?;
     let asset = release
         .assets

@@ -25,10 +25,7 @@ const FFPROBE_BINARY_NAME: &str = "ffprobe";
 ///
 /// Managed downloads come from BtbN/FFmpeg-Builds (Windows shared build) or
 /// eugeneware/ffmpeg-static (macOS/Linux static).
-pub async fn ensure(
-    client: &reqwest::Client,
-    bin_dir: &Path,
-) -> Result<PathBuf, DependencyError> {
+pub async fn ensure(client: &reqwest::Client, bin_dir: &Path) -> Result<PathBuf, DependencyError> {
     let managed_path = bin_dir.join(BINARY_NAME);
     let managed_ok = is_install_complete(bin_dir);
     let system = find_on_path(BINARY_NAME);
@@ -125,8 +122,7 @@ async fn download_shared_build(
     client: &reqwest::Client,
     bin_dir: &Path,
 ) -> Result<(), DependencyError> {
-    let release =
-        github_release::latest_release(client, "BtbN", "FFmpeg-Builds").await?;
+    let release = github_release::latest_release(client, "BtbN", "FFmpeg-Builds").await?;
 
     let asset = release
         .assets
@@ -168,9 +164,8 @@ async fn download_shared_build(
 #[cfg(target_os = "windows")]
 fn extract_zip_bin(zip_bytes: &[u8], bin_dir: &Path) -> Result<(), DependencyError> {
     let reader = std::io::Cursor::new(zip_bytes);
-    let mut archive = zip::ZipArchive::new(reader).map_err(|e| {
-        DependencyError::Extract(std::io::Error::new(std::io::ErrorKind::Other, e))
-    })?;
+    let mut archive = zip::ZipArchive::new(reader)
+        .map_err(|e| DependencyError::Extract(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| {
@@ -185,8 +180,7 @@ fn extract_zip_bin(zip_bytes: &[u8], bin_dir: &Path) -> Result<(), DependencyErr
             let filename = &path[pos + 5..];
             if !filename.is_empty() && !filename.contains('/') {
                 let dest = bin_dir.join(filename);
-                let mut out =
-                    std::fs::File::create(&dest).map_err(DependencyError::Extract)?;
+                let mut out = std::fs::File::create(&dest).map_err(DependencyError::Extract)?;
                 std::io::copy(&mut file, &mut out).map_err(DependencyError::Extract)?;
                 tracing::debug!("Extracted {filename}");
             }
@@ -223,14 +217,20 @@ async fn download_static_builds(
     client: &reqwest::Client,
     bin_dir: &Path,
 ) -> Result<(), DependencyError> {
-    let release =
-        github_release::latest_release(client, "eugeneware", "ffmpeg-static").await?;
+    let release = github_release::latest_release(client, "eugeneware", "ffmpeg-static").await?;
 
     let ffmpeg_path = bin_dir.join(BINARY_NAME);
     download_asset(client, &release, ASSET_NAME, &ffmpeg_path, "ffmpeg").await?;
 
     let ffprobe_path = bin_dir.join(FFPROBE_BINARY_NAME);
-    download_asset(client, &release, FFPROBE_ASSET_NAME, &ffprobe_path, "ffprobe").await?;
+    download_asset(
+        client,
+        &release,
+        FFPROBE_ASSET_NAME,
+        &ffprobe_path,
+        "ffprobe",
+    )
+    .await?;
 
     Ok(())
 }

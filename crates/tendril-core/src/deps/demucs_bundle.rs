@@ -33,15 +33,25 @@ const PYTHON_BUILD_TAG: &str = "20260203";
 /// Platform triple for python-build-standalone.
 fn python_triple() -> &'static str {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    { "aarch64-apple-darwin" }
+    {
+        "aarch64-apple-darwin"
+    }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    { "x86_64-apple-darwin" }
+    {
+        "x86_64-apple-darwin"
+    }
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    { "x86_64-pc-windows-msvc" }
+    {
+        "x86_64-pc-windows-msvc"
+    }
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    { "x86_64-unknown-linux-gnu" }
+    {
+        "x86_64-unknown-linux-gnu"
+    }
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    { "aarch64-unknown-linux-gnu" }
+    {
+        "aarch64-unknown-linux-gnu"
+    }
 }
 
 /// Build the download URL for python-build-standalone.
@@ -159,7 +169,11 @@ pub async fn ensure(
     }
 
     // ── Step 3: pip install torch + demucs ──
-    send("PyTorch", 0.35, "Installing PyTorch (this may take a few minutes)...");
+    send(
+        "PyTorch",
+        0.35,
+        "Installing PyTorch (this may take a few minutes)...",
+    );
 
     install_torch(&python_bin, progress_tx.as_ref()).await?;
 
@@ -235,14 +249,7 @@ pub async fn update_demucs(dirs: &AppDirs) -> Result<(), DependencyError> {
         return Err(DependencyError::BinaryNotFound { path: python_bin });
     }
 
-    run_pip_install_streaming(
-        &python_bin,
-        &["--upgrade", "demucs"],
-        "demucs",
-        None,
-        0.0,
-    )
-    .await?;
+    run_pip_install_streaming(&python_bin, &["--upgrade", "demucs"], "demucs", None, 0.0).await?;
 
     let mut versions = InstalledVersions::load(&dirs.data_dir);
     versions.demucs = query_python_version(&python_bin, "demucs").await;
@@ -263,14 +270,7 @@ async fn install_torch(
     if cfg!(target_os = "macos") {
         // macOS: install from PyPI (includes MPS support on Apple Silicon)
         tracing::info!("Installing PyTorch from PyPI (macOS)");
-        run_pip_install_streaming(
-            python_bin,
-            &["torch"],
-            "PyTorch",
-            progress_tx,
-            0.4,
-        )
-        .await?;
+        run_pip_install_streaming(python_bin, &["torch"], "PyTorch", progress_tx, 0.4).await?;
     } else {
         // Windows/Linux: install CUDA-enabled PyTorch (falls back to CPU automatically)
         let index_url = "https://download.pytorch.org/whl/cu126";
@@ -286,14 +286,7 @@ async fn install_torch(
     }
 
     // torchcodec from PyPI (works with any torch variant)
-    run_pip_install_streaming(
-        python_bin,
-        &["torchcodec"],
-        "PyTorch",
-        progress_tx,
-        0.7,
-    )
-    .await?;
+    run_pip_install_streaming(python_bin, &["torchcodec"], "PyTorch", progress_tx, 0.7).await?;
 
     Ok(())
 }

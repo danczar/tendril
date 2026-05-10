@@ -334,7 +334,9 @@ fn swap_in_directory(src: &std::path::Path, dest: &std::path::Path) -> std::io::
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let from = entry.path();
-        let Some(name) = from.file_name() else { continue };
+        let Some(name) = from.file_name() else {
+            continue;
+        };
         let to = dest.join(name);
 
         // On Windows, rename fails if dest exists; remove first.
@@ -359,9 +361,7 @@ async fn query_ytdlp_version(dirs: &AppDirs) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-async fn query_ffmpeg_version(
-    dirs: &AppDirs,
-) -> (Option<String>, versions::FfmpegSource) {
+async fn query_ffmpeg_version(dirs: &AppDirs) -> (Option<String>, versions::FfmpegSource) {
     let managed = dirs.bin_dir().join(ffmpeg_binary_name());
     let system = ffmpeg::find_on_path(ffmpeg_binary_name());
 
@@ -401,11 +401,19 @@ async fn query_ffmpeg_version(
 }
 
 #[cfg(target_os = "windows")]
-fn ytdlp_binary_name() -> &'static str { "yt-dlp.exe" }
+fn ytdlp_binary_name() -> &'static str {
+    "yt-dlp.exe"
+}
 #[cfg(not(target_os = "windows"))]
-fn ytdlp_binary_name() -> &'static str { "yt-dlp" }
+fn ytdlp_binary_name() -> &'static str {
+    "yt-dlp"
+}
 
 #[cfg(target_os = "windows")]
-fn ffmpeg_binary_name() -> &'static str { "ffmpeg.exe" }
+fn ffmpeg_binary_name() -> &'static str {
+    "ffmpeg.exe"
+}
 #[cfg(not(target_os = "windows"))]
-fn ffmpeg_binary_name() -> &'static str { "ffmpeg" }
+fn ffmpeg_binary_name() -> &'static str {
+    "ffmpeg"
+}

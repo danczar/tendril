@@ -23,10 +23,13 @@ pub async fn download_audio(
 
     let output = tokio::process::Command::new(ytdlp_bin)
         .args([
-            "-f", "bestaudio",
+            "-f",
+            "bestaudio",
             "-x",
-            "--audio-format", "wav",
-            "--audio-quality", "0",
+            "--audio-format",
+            "wav",
+            "--audio-quality",
+            "0",
             "--no-playlist",
             "--ffmpeg-location",
             &ffmpeg_dir.to_string_lossy(),

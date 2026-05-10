@@ -33,18 +33,16 @@ pub async fn check_ytdlp_latest(client: &reqwest::Client) -> Option<String> {
 pub async fn check_ffmpeg_latest(client: &reqwest::Client) -> Option<String> {
     #[cfg(target_os = "windows")]
     {
-        let release =
-            github_release::latest_release(client, "BtbN", "FFmpeg-Builds")
-                .await
-                .ok()?;
+        let release = github_release::latest_release(client, "BtbN", "FFmpeg-Builds")
+            .await
+            .ok()?;
         return Some(release.tag_name);
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let release =
-            github_release::latest_release(client, "eugeneware", "ffmpeg-static")
-                .await
-                .ok()?;
+        let release = github_release::latest_release(client, "eugeneware", "ffmpeg-static")
+            .await
+            .ok()?;
         Some(release.tag_name)
     }
 }

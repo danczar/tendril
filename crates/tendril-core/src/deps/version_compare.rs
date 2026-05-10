@@ -46,18 +46,21 @@ pub fn version_eq_normalized(installed: &str, latest: &str) -> bool {
     if segs_a.len() != segs_b.len() {
         return false;
     }
-    segs_a.iter().zip(segs_b.iter()).all(|(x, y)| {
-        match (x.parse::<u64>(), y.parse::<u64>()) {
+    segs_a
+        .iter()
+        .zip(segs_b.iter())
+        .all(|(x, y)| match (x.parse::<u64>(), y.parse::<u64>()) {
             (Ok(a), Ok(b)) => a == b,
             _ => x == y,
-        }
-    })
+        })
 }
 
 /// Convenience: compare an `Option<&str>` installed version against a
 /// known-Some latest. Returns true only if installed is Some and equal.
 pub fn opt_version_eq(installed: Option<&str>, latest: &str) -> bool {
-    installed.map(|i| version_eq_normalized(i, latest)).unwrap_or(false)
+    installed
+        .map(|i| version_eq_normalized(i, latest))
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
