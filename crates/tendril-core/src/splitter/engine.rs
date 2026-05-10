@@ -99,7 +99,7 @@ pub async fn separate(
         .map_err(|e| SplitterError::Inference(format!("failed to spawn demucs: {e}")))?;
 
     // Read stderr in a background task to parse progress
-    let stderr = child.stderr.take().unwrap();
+    let stderr = child.stderr.take().expect("stderr was piped above");
     let is_ft = model_name.contains("_ft");
     let progress_tx_clone = progress_tx.clone();
 

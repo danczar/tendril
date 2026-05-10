@@ -5,17 +5,12 @@ use serde::{Deserialize, Serialize};
 const FILENAME: &str = "versions.json";
 
 /// Source of the ffmpeg binary.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FfmpegSource {
+    #[default]
     Managed,
     System,
-}
-
-impl Default for FfmpegSource {
-    fn default() -> Self {
-        Self::Managed
-    }
 }
 
 /// Tracks installed versions of external dependencies.
@@ -47,7 +42,7 @@ impl InstalledVersions {
     pub fn save(&self, data_dir: &Path) -> std::io::Result<()> {
         let path = data_dir.join(FILENAME);
         let text = serde_json::to_string_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
         std::fs::write(&path, text)
     }
 

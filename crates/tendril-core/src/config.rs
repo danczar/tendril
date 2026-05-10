@@ -49,7 +49,7 @@ pub enum ModelVariant {
 
 impl OutputFormat {
     /// File extension for this format.
-    pub fn extension(&self) -> &'static str {
+    pub const fn extension(&self) -> &'static str {
         match self {
             OutputFormat::Wav => "wav",
             OutputFormat::Flac => "flac",
@@ -61,7 +61,7 @@ impl OutputFormat {
 
 impl ModelVariant {
     /// Map to demucs model name for the Python CLI.
-    pub fn model_name(&self) -> &'static str {
+    pub const fn model_name(&self) -> &'static str {
         match self {
             ModelVariant::HtdemucsFineTuned => "htdemucs_ft",
             ModelVariant::Htdemucs => "htdemucs",

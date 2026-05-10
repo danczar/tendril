@@ -4,7 +4,7 @@ use crate::config::OutputFormat;
 use crate::error::AudioError;
 
 /// Codec arguments for each output format.
-pub(crate) fn codec_args(format: OutputFormat) -> &'static [&'static str] {
+pub(crate) const fn codec_args(format: OutputFormat) -> &'static [&'static str] {
     match format {
         OutputFormat::Wav => &[],
         OutputFormat::Flac => &["-c:a", "flac", "-compression_level", "0"],

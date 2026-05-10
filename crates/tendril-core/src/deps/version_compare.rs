@@ -19,10 +19,7 @@ fn strip_prefix_and_local(s: &str) -> &str {
         Some(c) if matches!(c, 'v' | 'V' | 'b' | 'n') => &s[c.len_utf8()..],
         _ => s,
     };
-    match stripped.find('+') {
-        Some(i) => &stripped[..i],
-        None => stripped,
-    }
+    stripped.find('+').map_or(stripped, |i| &stripped[..i])
 }
 
 /// Normalize a version string: drop letter prefix and `+local` metadata,
@@ -57,7 +54,7 @@ pub fn version_eq_normalized(installed: &str, latest: &str) -> bool {
 /// Convenience: compare an `Option<&str>` installed version against a
 /// known-Some latest. Returns true only if installed is Some and equal.
 pub fn opt_version_eq(installed: Option<&str>, latest: &str) -> bool {
-    installed.map(|i| version_eq_normalized(i, latest)).unwrap_or(false)
+    installed.is_some_and(|i| version_eq_normalized(i, latest))
 }
 
 #[cfg(test)]

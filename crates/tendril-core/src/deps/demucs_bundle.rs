@@ -75,7 +75,7 @@ pub async fn ensure(
             return Ok(python_bin);
         }
         // Python present but demucs missing — just pip install
-        return install_demucs(dirs, &python_bin, &progress_tx).await;
+        return install_demucs(dirs, &python_bin, progress_tx.as_ref()).await;
     }
 
     let send = |tool: &str, fraction: f32, msg: &str| {
@@ -139,7 +139,7 @@ pub async fn ensure(
         archive.unpack(&demucs_dir_clone)
     })
     .await
-    .map_err(|e| DependencyError::Extract(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+    .map_err(|e| DependencyError::Extract(std::io::Error::other(e)))?
     .map_err(DependencyError::Extract)?;
 
     // Set executable permissions
@@ -194,7 +194,7 @@ pub async fn ensure(
 async fn install_demucs(
     dirs: &AppDirs,
     python_bin: &std::path::Path,
-    progress_tx: &Option<watch::Sender<DownloadProgress>>,
+    progress_tx: Option<&watch::Sender<DownloadProgress>>,
 ) -> Result<PathBuf, DependencyError> {
     if let Some(tx) = progress_tx {
         let _ = tx.send(DownloadProgress {
@@ -208,7 +208,7 @@ async fn install_demucs(
         python_bin,
         &["demucs", "soundfile"],
         "demucs",
-        progress_tx.as_ref(),
+        progress_tx,
         0.5,
     )
     .await?;
@@ -345,7 +345,7 @@ async fn run_pip_install_streaming(
             let mut lines = BufReader::new(s).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 tracing::debug!(target: "deps::pip", "{line}");
-                forward_pip_line(&line, &tool_for_out, &tx_for_out, base_fraction);
+                forward_pip_line(&line, &tool_for_out, tx_for_out.as_ref(), base_fraction);
             }
         }
     });
@@ -387,7 +387,7 @@ async fn run_pip_install_streaming(
 fn forward_pip_line(
     line: &str,
     tool: &str,
-    tx: &Option<watch::Sender<DownloadProgress>>,
+    tx: Option<&watch::Sender<DownloadProgress>>,
     base_fraction: f32,
 ) {
     let trimmed = line.trim();
