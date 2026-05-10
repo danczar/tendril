@@ -281,15 +281,48 @@ async fn download_asset(
 
 // ── Shared utilities ──────────────────────────────────────────────────
 
-/// Resolve a binary name to its absolute path on the system PATH.
+/// Resolve a binary name to its absolute path: PATH first, then well-known
+/// install prefixes so we still find ffmpeg when launched from Finder/Dock.
+///
+/// macOS .app bundles inherit launchd's minimal PATH, not the user's shell
+/// PATH — so a Homebrew ffmpeg at `/opt/homebrew/bin/ffmpeg` is invisible
+/// to a `find_on_path` that only consults `$PATH`. The fallback list covers
+/// the common package-manager prefixes; first hit wins.
 pub fn find_on_path(name: &str) -> Option<PathBuf> {
-    let path_var = std::env::var_os("PATH")?;
-    std::env::split_paths(&path_var).find_map(|dir| {
-        let candidate = dir.join(name);
+    if let Some(path_var) = std::env::var_os("PATH")
+        && let Some(found) = std::env::split_paths(&path_var).find_map(|dir| {
+            let candidate = dir.join(name);
+            candidate.is_file().then_some(candidate)
+        })
+    {
+        return Some(found);
+    }
+
+    for prefix in fallback_prefixes() {
+        let candidate = std::path::Path::new(prefix).join(name);
         if candidate.is_file() {
-            Some(candidate)
-        } else {
-            None
+            return Some(candidate);
         }
-    })
+    }
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn fallback_prefixes() -> &'static [&'static str] {
+    &[
+        "/opt/homebrew/bin", // Apple Silicon Homebrew
+        "/usr/local/bin",    // Intel Homebrew, manual installs
+        "/opt/local/bin",    // MacPorts
+        "/usr/bin",          // system (rare for ffmpeg)
+    ]
+}
+
+#[cfg(target_os = "linux")]
+fn fallback_prefixes() -> &'static [&'static str] {
+    &["/usr/local/bin", "/usr/bin", "/snap/bin"]
+}
+
+#[cfg(target_os = "windows")]
+fn fallback_prefixes() -> &'static [&'static str] {
+    &[]
 }
