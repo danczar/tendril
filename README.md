@@ -24,7 +24,8 @@ Tendril is a desktop app that splits audio tracks into individual stems using [D
 
 - **Search YouTube** and download audio directly, or process local files
 - **Separate into 4 stems**: vocals, drums, bass, other
-- **Create an instrumental mix** automatically (drums + bass + other)
+- **Create an instrumental mix** (drums + bass + other), optional
+- **Loudness-normalize** every output to a target LUFS (default -14, EBU R128 two-pass)
 - **Export** to WAV, FLAC, MP3, or AAC
 - **GPU-accelerated** — MPS on Apple Silicon, CUDA on NVIDIA GPUs, automatic detection
 - **Self-contained** — manages its own dependencies at runtime
@@ -48,8 +49,9 @@ Everything is stored in your platform's standard data directory — nothing is i
 
 1. **Search** for a song or paste a YouTube URL
 2. **Click +** to add it to the processing queue
-3. Tendril downloads the audio, runs it through Demucs, converts the output stems to your chosen format, and creates an instrumental mix
+3. Tendril downloads the audio, runs it through Demucs, converts each stem to your chosen format, loudness-normalizes every output to your target LUFS, and optionally builds an instrumental mix
 4. Output lands in `~/Music/Tendril/` (configurable in settings)
+5. Completed jobs stay in the queue for the session — click a Done item to open its output folder
 
 Each output folder contains:
 ```
@@ -58,7 +60,8 @@ Song Name (video_id)/
 ├── drums.flac
 ├── bass.flac
 ├── other.flac
-└── instrumental.flac
+├── instrumental.flac    # if "Create instrumental" is on (default)
+└── full_mix.flac        # if "Preserve full mix" is on
 ```
 
 If a song has already been processed, the result shows a folder icon instead of + to open the output directly.
@@ -71,6 +74,8 @@ If a song has already been processed, the result shows a folder icon instead of 
 | GPU backend | Auto, CPU | Auto |
 | Model | Demucs (fast), Demucs Fine-tuned (slower, better quality) | Fine-tuned |
 | Preserve full mix | Saves the original audio alongside stems | Off |
+| Create instrumental | Renders drums + bass + other as `instrumental.{ext}` | On |
+| Target loudness | EBU R128 LUFS target applied to every output, -30 to -6 | -14 LUFS |
 | Output directory | Any folder | `~/Music/Tendril` |
 
 **Auto** uses MPS on Apple Silicon, CUDA on NVIDIA GPUs, and CPU otherwise.
@@ -79,7 +84,7 @@ If a song has already been processed, the result shows a folder icon instead of 
 
 ### Requirements
 
-- **Rust** 1.77+ ([rustup.rs](https://rustup.rs))
+- **Rust** 1.85+ ([rustup.rs](https://rustup.rs)) — edition 2024
 - **Platform SDK**: Xcode Command Line Tools on macOS, Visual Studio Build Tools on Windows
 
 ### Build
