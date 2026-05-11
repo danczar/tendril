@@ -18,9 +18,6 @@ fn main() -> Result<()> {
 
     tracing::info!("Starting Tendril v{}", env!("CARGO_PKG_VERSION"));
 
-    #[cfg(target_os = "macos")]
-    set_macos_dock_icon();
-
     // Initialize core
     let dirs = tendril_core::dirs::AppDirs::resolve()?;
     let config = tendril_core::config::Config::load(&dirs.config_dir)?;
@@ -145,24 +142,4 @@ fn main() -> Result<()> {
 
     tracing::info!("Shutting down");
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn set_macos_dock_icon() {
-    use objc2::AllocAnyThread;
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::{NSApplication, NSImage};
-    use objc2_foundation::NSData;
-
-    static ICON_PNG: &[u8] = include_bytes!("../ui/tendril-icon-512.png");
-
-    let mtm = MainThreadMarker::new().expect("must be called on main thread");
-    let app = NSApplication::sharedApplication(mtm);
-    let data = NSData::with_bytes(ICON_PNG);
-    if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
-        // SAFETY: setApplicationIconImage requires a main-thread call (we hold
-        // MainThreadMarker above) and a valid NSImage* (constructed from in-memory
-        // PNG above; ARC retains via the &image reference).
-        unsafe { app.setApplicationIconImage(Some(&image)) };
-    }
 }
