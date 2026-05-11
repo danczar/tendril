@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use crate::config::OutputFormat;
 use crate::error::AudioError;
 
+use super::loudnorm::{self, LoudnormMeasurement};
+
 /// Build the ffmpeg `-filter_complex` value used by `create_instrumental`.
 ///
 /// `normalize=0` is the critical bit: it disables `amix`'s default 1/N divisor
@@ -14,7 +16,11 @@ pub(crate) fn instrumental_filter() -> &'static str {
     "amix=inputs=3:duration=longest:normalize=0"
 }
 
-/// Create an instrumental mix by combining drums + bass + other stems.
+/// Create an instrumental mix by combining drums + bass + other stems,
+/// two-pass loudness-normalized to `target_lufs`. Pass 1 sums the stems and
+/// measures the result; pass 2 sums them again and applies a linear gain
+/// adjustment based on the measurement. Falls back to single-pass loudnorm
+/// on the sum if measurement parsing fails.
 pub async fn create_instrumental(
     ffmpeg_bin: &Path,
     drums: &Path,
@@ -22,7 +28,18 @@ pub async fn create_instrumental(
     other: &Path,
     output_path: &Path,
     format: OutputFormat,
+    target_lufs: f32,
 ) -> Result<PathBuf, AudioError> {
+    let measurement = measure(ffmpeg_bin, drums, bass, other, target_lufs).await;
+    let loudnorm_part = match &measurement {
+        Some(m) => loudnorm::apply_filter(target_lufs, m),
+        None => {
+            tracing::warn!("loudnorm measurement failed for instrumental mix; falling back");
+            loudnorm::loudnorm_filter(target_lufs)
+        }
+    };
+    let filter = format!("{},{loudnorm_part}", instrumental_filter());
+
     let output = tokio::process::Command::new(ffmpeg_bin)
         .arg("-y")
         .arg("-i")
@@ -31,7 +48,7 @@ pub async fn create_instrumental(
         .arg(bass)
         .arg("-i")
         .arg(other)
-        .args(["-filter_complex", instrumental_filter()])
+        .args(["-filter_complex", &filter])
         .args(super::convert::codec_args(format))
         .arg(output_path)
         .output()
@@ -49,6 +66,37 @@ pub async fn create_instrumental(
     }
 
     Ok(output_path.to_path_buf())
+}
+
+/// Pass-1: sum the three stems and measure loudness. Output discarded.
+async fn measure(
+    ffmpeg_bin: &Path,
+    drums: &Path,
+    bass: &Path,
+    other: &Path,
+    target_lufs: f32,
+) -> Option<LoudnormMeasurement> {
+    let filter = format!(
+        "{},{}",
+        instrumental_filter(),
+        loudnorm::measure_filter(target_lufs),
+    );
+    let out = tokio::process::Command::new(ffmpeg_bin)
+        .arg("-i")
+        .arg(drums)
+        .arg("-i")
+        .arg(bass)
+        .arg("-i")
+        .arg(other)
+        .args(["-filter_complex", &filter])
+        .args(["-f", "null", "-"])
+        .output()
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    loudnorm::parse_measurement(&String::from_utf8_lossy(&out.stderr))
 }
 
 #[cfg(test)]

@@ -9,9 +9,16 @@ export component SettingsModal inherits Rectangle {
     in-out property <int> model-index: 1;
     in-out property <string> output-dir: "";
     in-out property <bool> preserve-full-mix: false;
+    in-out property <bool> create-instrumental: true;
+    in-out property <int> target-lufs: -14;
     callback settings-changed();
     callback browse-output-dir();
     callback close();
+
+    // LUFS bounds: -30 is roughly the quietest streaming preset users tolerate,
+    // -6 is well above any modern reference (CD-era loud-wars territory).
+    property <int> lufs-min: -30;
+    property <int> lufs-max: -6;
 
     // Fill entire parent
     width: 100%;
@@ -161,6 +168,150 @@ export component SettingsModal inherits Rectangle {
                             clicked => {
                                 root.preserve-full-mix = !root.preserve-full-mix;
                                 root.settings-changed();
+                            }
+                        }
+                    }
+                }
+
+                // Create instrumental toggle
+                HorizontalLayout {
+                    spacing: Theme.space-3;
+                    height: 28px;
+
+                    Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: Theme.radius-xs;
+                        border-width: 1px;
+                        border-color: root.create-instrumental ? Theme.accent : Theme.border-default;
+                        background: root.create-instrumental ? Theme.accent : transparent;
+
+                        animate background { duration: Theme.duration-fast; easing: ease-out; }
+                        animate border-color { duration: Theme.duration-fast; easing: ease-out; }
+
+                        if root.create-instrumental: Text {
+                            text: "\u{2713}";
+                            color: Theme.bg-base;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        instr-toggle := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.create-instrumental = !root.create-instrumental;
+                                root.settings-changed();
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Create instrumental";
+                        color: Theme.text-secondary;
+                        font-size: Theme.text-sm;
+                        vertical-alignment: center;
+
+                        instr-label-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.create-instrumental = !root.create-instrumental;
+                                root.settings-changed();
+                            }
+                        }
+                    }
+                }
+
+                // Target loudness (LUFS) stepper
+                VerticalLayout {
+                    spacing: Theme.space-2;
+
+                    Text {
+                        text: "Target Loudness";
+                        color: Theme.text-secondary;
+                        font-size: Theme.text-sm;
+                    }
+
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        height: 36px;
+
+                        // Decrement (quieter)
+                        Rectangle {
+                            width: 36px;
+                            height: 36px;
+                            background: lufs-dec-touch.has-hover && root.target-lufs > root.lufs-min ? Theme.bg-surface : Theme.bg-base;
+                            border-radius: Theme.radius-sm;
+                            border-width: 1px;
+                            border-color: Theme.border-default;
+                            opacity: root.target-lufs > root.lufs-min ? 1.0 : 0.4;
+                            animate background { duration: Theme.duration-fast; }
+
+                            Text {
+                                text: "−";
+                                color: Theme.text-secondary;
+                                font-size: Theme.text-lg;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            lufs-dec-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    if root.target-lufs > root.lufs-min {
+                                        root.target-lufs = root.target-lufs - 1;
+                                        root.settings-changed();
+                                    }
+                                }
+                            }
+                        }
+
+                        // Current value
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 36px;
+                            background: Theme.bg-base;
+                            border-radius: Theme.radius-sm;
+                            border-width: 1px;
+                            border-color: Theme.border-default;
+
+                            Text {
+                                text: root.target-lufs + " LUFS";
+                                color: Theme.text-primary;
+                                font-size: Theme.text-base;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Increment (louder)
+                        Rectangle {
+                            width: 36px;
+                            height: 36px;
+                            background: lufs-inc-touch.has-hover && root.target-lufs < root.lufs-max ? Theme.bg-surface : Theme.bg-base;
+                            border-radius: Theme.radius-sm;
+                            border-width: 1px;
+                            border-color: Theme.border-default;
+                            opacity: root.target-lufs < root.lufs-max ? 1.0 : 0.4;
+                            animate background { duration: Theme.duration-fast; }
+
+                            Text {
+                                text: "+";
+                                color: Theme.text-secondary;
+                                font-size: Theme.text-lg;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            lufs-inc-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    if root.target-lufs < root.lufs-max {
+                                        root.target-lufs = root.target-lufs + 1;
+                                        root.settings-changed();
+                                    }
+                                }
                             }
                         }
                     }

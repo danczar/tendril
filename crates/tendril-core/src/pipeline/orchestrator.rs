@@ -21,6 +21,8 @@ pub struct PipelineContext {
     pub gpu_backend: GpuBackend,
     pub model_name: String,
     pub preserve_full_mix: bool,
+    pub create_instrumental: bool,
+    pub target_lufs: f32,
 }
 
 /// Run the full processing pipeline for a single job:
@@ -102,6 +104,7 @@ pub async fn run(
             &audio_path,
             ctx.output_format,
             &full_mix_path,
+            ctx.target_lufs,
         )
         .await
         .map_err(|e| PipelineError::StageFailed {
@@ -167,7 +170,13 @@ pub async fn run(
     send(PipelineStage::Converting, 0.0, "Converting 4 stems...");
 
     let convert_futs = stem_paths.iter().map(|stem_path| {
-        crate::audio::convert::convert(&ctx.ffmpeg_bin, stem_path, ctx.output_format, &final_dir)
+        crate::audio::convert::convert(
+            &ctx.ffmpeg_bin,
+            stem_path,
+            ctx.output_format,
+            &final_dir,
+            ctx.target_lufs,
+        )
     });
 
     try_join_all(convert_futs)
@@ -184,24 +193,27 @@ pub async fn run(
 
     send(PipelineStage::Converting, 1.0, "Converted 4/4");
 
-    // ── Stage 4: Create instrumental mix ──
-    send(PipelineStage::Mixing, 0.0, "Creating instrumental mix...");
+    // ── Stage 4: Create instrumental mix (optional) ──
+    if ctx.create_instrumental {
+        send(PipelineStage::Mixing, 0.0, "Creating instrumental mix...");
 
-    let instrumental_path = final_dir.join(format!("instrumental.{ext}"));
+        let instrumental_path = final_dir.join(format!("instrumental.{ext}"));
 
-    crate::audio::mix::create_instrumental(
-        &ctx.ffmpeg_bin,
-        &stems.drums,
-        &stems.bass,
-        &stems.other,
-        &instrumental_path,
-        ctx.output_format,
-    )
-    .await
-    .map_err(|e| PipelineError::StageFailed {
-        stage: "mix".into(),
-        message: e.to_string(),
-    })?;
+        crate::audio::mix::create_instrumental(
+            &ctx.ffmpeg_bin,
+            &stems.drums,
+            &stems.bass,
+            &stems.other,
+            &instrumental_path,
+            ctx.output_format,
+            ctx.target_lufs,
+        )
+        .await
+        .map_err(|e| PipelineError::StageFailed {
+            stage: "mix".into(),
+            message: e.to_string(),
+        })?;
+    }
 
     // ── Done ──
     send(PipelineStage::Complete, 1.0, "Done!");

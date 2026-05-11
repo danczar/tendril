@@ -19,6 +19,12 @@ pub struct Config {
     pub output_dir: PathBuf,
     /// Whether to preserve the full mix (original audio) in the output directory.
     pub preserve_full_mix: bool,
+    /// Whether to render an instrumental mix (drums + bass + other).
+    pub create_instrumental: bool,
+    /// Target integrated loudness in LUFS applied to every output.
+    /// -14 LUFS matches the modern streaming reference (Spotify, YouTube,
+    /// Apple Music auto-leveling target).
+    pub target_lufs: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +83,8 @@ impl Default for Config {
             model_variant: ModelVariant::HtdemucsFineTuned,
             output_dir: AppDirs::default_output_dir(),
             preserve_full_mix: false,
+            create_instrumental: true,
+            target_lufs: -14.0,
         }
     }
 }

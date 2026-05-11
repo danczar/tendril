@@ -51,6 +51,8 @@ fn main() -> Result<()> {
             tendril_core::config::ModelVariant::HtdemucsFineTuned => 1,
         });
         window.set_preserve_full_mix(state.config.preserve_full_mix);
+        window.set_create_instrumental(state.config.create_instrumental);
+        window.set_target_lufs(state.config.target_lufs.round() as i32);
     }
 
     // Wire callbacks

@@ -111,6 +111,8 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
                         gpu_backend: s.config.gpu_backend,
                         model_name: s.config.model_variant.model_name().to_string(),
                         preserve_full_mix: s.config.preserve_full_mix,
+                        create_instrumental: s.config.create_instrumental,
+                        target_lufs: s.config.target_lufs,
                     }
                 };
 
@@ -579,6 +581,8 @@ fn connect_settings(window: &MainWindow, state: SharedState) {
             _ => tendril_core::config::ModelVariant::HtdemucsFineTuned,
         };
         s.config.preserve_full_mix = w.get_preserve_full_mix();
+        s.config.create_instrumental = w.get_create_instrumental();
+        s.config.target_lufs = w.get_target_lufs() as f32;
 
         if let Err(e) = s.config.save(&s.dirs.config_dir) {
             tracing::error!("Failed to save config: {e}");

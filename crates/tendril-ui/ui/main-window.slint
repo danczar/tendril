@@ -40,6 +40,8 @@ export component MainWindow inherits Window {
     in-out property <string> output-dir: "";
     in-out property <bool> settings-visible: false;
     in-out property <bool> preserve-full-mix: false;
+    in-out property <bool> create-instrumental: true;
+    in-out property <int> target-lufs: -14;
 
     // ── Dependency manager state ──
     in-out property <bool> deps-visible: false;
@@ -280,6 +282,8 @@ export component MainWindow inherits Window {
         model-index <=> root.model-index;
         output-dir <=> root.output-dir;
         preserve-full-mix <=> root.preserve-full-mix;
+        create-instrumental <=> root.create-instrumental;
+        target-lufs <=> root.target-lufs;
         settings-changed => { root.settings-changed(); }
         browse-output-dir => { root.browse-output-dir(); }
         close => { root.settings-visible = false; }
