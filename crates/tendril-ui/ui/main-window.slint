@@ -63,6 +63,7 @@ export component MainWindow inherits Window {
     callback enqueue-result(int);
     callback open-result-folder(int);
     callback remove-job(int);
+    callback open-queue-folder(int);
     callback settings-changed();
     callback download-deps();
     callback update-dep(string);
@@ -236,6 +237,7 @@ export component MainWindow inherits Window {
                     for item in root.queue-items: QueueItem {
                         data: item;
                         remove => { root.remove-job(item.job-id); }
+                        open-folder => { root.open-queue-folder(item.job-id); }
                     }
                 }
             }

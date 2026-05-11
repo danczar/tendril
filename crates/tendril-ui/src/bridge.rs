@@ -28,6 +28,7 @@ pub fn connect_callbacks(window: &MainWindow, state: SharedState, rt: Handle) {
     connect_enqueue(window, state.clone());
     connect_remove(window, state.clone());
     connect_open_folder(window, state.clone());
+    connect_open_queue_folder(window, state.clone());
     connect_settings(window, state.clone());
     connect_deps(window, state.clone(), rt.clone());
     connect_check_deps(window, state.clone(), rt.clone());
@@ -125,15 +126,12 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
                 .await;
 
                 match &result {
-                    Ok(()) => {
-                        // Brief delay so user can see Done status; 1s keeps batch throughput high.
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                    }
+                    Ok(()) => {}
                     Err(e) => {
-                        let is_cancelled =
-                            matches!(e, tendril_core::error::PipelineError::Cancelled);
-                        if is_cancelled {
+                        if matches!(e, tendril_core::error::PipelineError::Cancelled) {
                             tracing::info!("Job {job_id} cancelled");
+                            // Cancelled jobs were explicitly X'd by the user; the
+                            // remove handler already pulled them from the queue.
                         } else {
                             tracing::error!("Pipeline failed for job {job_id}: {e}");
                             let _ = progress_tx.send(tendril_core::progress::ProgressEvent {
@@ -141,19 +139,13 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
                                 fraction: 0.0,
                                 message: e.to_string(),
                             });
-                            // Brief delay so user can see Failed status; 1s keeps batch throughput high.
-                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                         }
                     }
                 }
 
-                // Remove completed/failed/cancelled job from queue
-                {
-                    let mut s = state.lock().unwrap();
-                    s.queue.remove(job_id);
-                }
-
-                // Refresh UI
+                // Completed and failed jobs stay in the queue so the user can
+                // click Done items to open the output folder and review failures.
+                // The runner skips non-Queued items, so they never re-run.
                 let state_c = state.clone();
                 let weak_c = weak.clone();
                 let _ = slint::invoke_from_event_loop(move || {
@@ -543,21 +535,37 @@ fn connect_open_folder(window: &MainWindow, state: SharedState) {
             let path = s.config.output_dir.join(&folder);
             if path.exists() {
                 tracing::info!("Opening folder: {}", path.display());
-                #[cfg(target_os = "macos")]
-                {
-                    let _ = std::process::Command::new("open").arg(&path).spawn();
-                }
-                #[cfg(target_os = "windows")]
-                {
-                    let _ = std::process::Command::new("explorer").arg(&path).spawn();
-                }
-                #[cfg(target_os = "linux")]
-                {
-                    let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
-                }
+                open_in_file_browser(&path);
             }
         }
     });
+}
+
+fn connect_open_queue_folder(window: &MainWindow, state: SharedState) {
+    window.on_open_queue_folder(move |job_id| {
+        let s = state.lock().unwrap();
+        let Some(job) = s.queue.iter().find(|j| j.id == job_id as u64) else {
+            return;
+        };
+        let folder = tendril_core::pipeline::job::output_folder_name(
+            job.source.display_name(),
+            job.source.video_id(),
+        );
+        let path = s.config.output_dir.join(&folder);
+        if path.exists() {
+            tracing::info!("Opening folder: {}", path.display());
+            open_in_file_browser(&path);
+        }
+    });
+}
+
+fn open_in_file_browser(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(path).spawn();
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("explorer").arg(path).spawn();
+    #[cfg(target_os = "linux")]
+    let _ = std::process::Command::new("xdg-open").arg(path).spawn();
 }
 
 fn connect_settings(window: &MainWindow, state: SharedState) {
