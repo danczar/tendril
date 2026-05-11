@@ -101,6 +101,10 @@ pub async fn separate(
         .spawn()
         .map_err(|e| SplitterError::Inference(format!("failed to spawn demucs: {e}")))?;
 
+    // Capture PID up front for the Windows process-tree-kill path: once
+    // child.wait() resolves, child.id() returns None.
+    let child_pid = child.id();
+
     // Read stderr in a background task to parse progress
     let stderr = child.stderr.take().expect("stderr was piped above");
     let is_ft = model_name.contains("_ft");
@@ -119,17 +123,7 @@ pub async fn separate(
                     if rx.changed().await.is_err() { break; }
                 }
             } => {
-                // Cancellation: kill the child, then reap it (avoid Unix
-                // zombies), then drain the stderr task so it doesn't leak.
-                //
-                // NOTE (Windows): TerminateProcess does not kill descendants.
-                // PyTorch / demucs can spawn helper processes (e.g. data-loader
-                // workers, an inner ffmpeg) that may survive. Fixing this
-                // properly requires a Win32 Job Object with
-                // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, which would mean adding
-                // the (large) `windows` crate as a dependency. Skipped for now
-                // — see Tendril memory / TODOs.
-                let _ = child.kill().await;
+                kill_process_tree(&mut child, child_pid).await;
                 let _ = child.wait().await;
                 let _ = stderr_handle.await;
                 return Err(SplitterError::Cancelled);
@@ -194,21 +188,96 @@ pub async fn separate(
     Ok(stems)
 }
 
-/// Parse tqdm progress bars from demucs stderr.
+/// Best-effort process-tree termination for the demucs subprocess.
 ///
-/// Demucs outputs progress like: `\r  45%|████████░░░░░░░░|`
-/// For htdemucs_ft, there are 4 separate passes (one per stem).
+/// On Unix, `tokio::Child::kill` sends SIGKILL to the immediate child; demucs
+/// rarely fans out beyond it, and any spawn_blocking ffmpeg helper exits when
+/// its parent does. On Windows, the same call uses `TerminateProcess`, which
+/// does NOT kill descendants — PyTorch DataLoader workers and the inner ffmpeg
+/// would survive. We shell out to `taskkill /T /F /PID <pid>` first to walk
+/// the tree, then fall back to `child.kill().await` to make sure the immediate
+/// child is reaped on every platform.
+async fn kill_process_tree(child: &mut tokio::process::Child, pid: Option<u32>) {
+    #[cfg(windows)]
+    if let Some(pid) = pid {
+        let _ = tokio::process::Command::new("taskkill")
+            .args(["/T", "/F", "/PID"])
+            .arg(pid.to_string())
+            .output()
+            .await;
+    }
+
+    #[cfg(not(windows))]
+    let _ = pid;
+
+    let _ = child.kill().await;
+}
+
+/// State machine for translating tqdm progress bytes into ProgressEvents.
+///
+/// Demucs emits progress like `\r  45%|████████░░░░░░░░|` on stderr. For
+/// htdemucs_ft there are 4 separate passes (one per stem), each restarting
+/// at 0%; we detect the wrap (`pct < last && last > 50`) to advance the
+/// pass counter.
+struct TqdmTracker {
+    progress_re: Regex,
+    is_ft: bool,
+    ft_stems: u32,
+    ft_stem_idx: u32,
+    last_pct: f32,
+}
+
+impl TqdmTracker {
+    fn new(is_ft: bool) -> Self {
+        Self {
+            progress_re: Regex::new(r"(\d+)%\|").expect("static regex compiles"),
+            is_ft,
+            ft_stems: if is_ft { 4 } else { 1 },
+            ft_stem_idx: 0,
+            last_pct: 0.0,
+        }
+    }
+
+    /// Feed a chunk of stderr bytes and return the latest progress event,
+    /// if the chunk contained at least one tqdm progress marker.
+    fn feed(&mut self, chunk: &str) -> Option<ProgressEvent> {
+        let caps = self.progress_re.captures_iter(chunk).last()?;
+        let pct: f32 = caps[1].parse().ok()?;
+
+        if self.is_ft && pct < self.last_pct && self.last_pct > 50.0 {
+            self.ft_stem_idx = (self.ft_stem_idx + 1).min(self.ft_stems - 1);
+        }
+        self.last_pct = pct;
+
+        let overall = (self.ft_stem_idx as f32 + pct / 100.0) / self.ft_stems as f32;
+        let message = if self.is_ft {
+            format!(
+                "Separating stems (pass {}/{})... {:.0}%",
+                self.ft_stem_idx + 1,
+                self.ft_stems,
+                pct
+            )
+        } else {
+            format!("Separating stems... {pct:.0}%")
+        };
+
+        Some(ProgressEvent {
+            stage: PipelineStage::Splitting,
+            fraction: overall.min(0.95),
+            message,
+        })
+    }
+}
+
+/// Parse tqdm progress bars from demucs stderr.
 async fn parse_stderr(
     mut stderr: tokio::process::ChildStderr,
     is_ft: bool,
     progress_tx: Option<Arc<watch::Sender<ProgressEvent>>>,
 ) -> String {
-    let progress_re = Regex::new(r"(\d+)%\|").unwrap();
+    let mut tracker = TqdmTracker::new(is_ft);
     let mut all_output = String::new();
     let mut buf = [0u8; 4096];
-    let mut ft_stem_idx: u32 = 0;
-    let mut last_pct: f32 = 0.0;
-    let ft_stems: u32 = if is_ft { 4 } else { 1 };
 
     loop {
         match stderr.read(&mut buf).await {
@@ -218,30 +287,9 @@ async fn parse_stderr(
                 all_output.push_str(&chunk);
 
                 if let Some(tx) = &progress_tx
-                    && let Some(caps) = progress_re.captures_iter(&chunk).last()
-                    && let Ok(pct) = caps[1].parse::<f32>()
+                    && let Some(event) = tracker.feed(&chunk)
                 {
-                    // Detect stem transition for htdemucs_ft
-                    if is_ft && pct < last_pct && last_pct > 50.0 {
-                        ft_stem_idx = (ft_stem_idx + 1).min(ft_stems - 1);
-                    }
-                    last_pct = pct;
-
-                    let overall = (ft_stem_idx as f32 + pct / 100.0) / ft_stems as f32;
-                    let _ = tx.send(ProgressEvent {
-                        stage: PipelineStage::Splitting,
-                        fraction: overall.min(0.95), // cap at 95% until done
-                        message: if is_ft {
-                            format!(
-                                "Separating stems (pass {}/{})... {:.0}%",
-                                ft_stem_idx + 1,
-                                ft_stems,
-                                pct
-                            )
-                        } else {
-                            format!("Separating stems... {:.0}%", pct)
-                        },
-                    });
+                    let _ = tx.send(event);
                 }
             }
             Err(_) => break,
@@ -257,4 +305,107 @@ fn num_jobs() -> usize {
         .map(|n| n.get())
         .unwrap_or(1)
         .clamp(1, 4)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tqdm_non_ft_basic_percentages() {
+        let mut t = TqdmTracker::new(false);
+        let e = t.feed("  0%|          | 0/10 [00:00<?, ?it/s]").unwrap();
+        assert_eq!(e.stage, PipelineStage::Splitting);
+        assert_eq!(e.fraction, 0.0);
+        assert!(e.message.contains("0%"));
+
+        let e = t
+            .feed(" 60%|████████  | 6/10 [00:30<00:20, 1.2it/s]")
+            .unwrap();
+        assert!((e.fraction - 0.6).abs() < 1e-4);
+        assert!(e.message.contains("60%"));
+
+        let e = t
+            .feed("100%|██████████| 10/10 [00:50<00:00, 1.2it/s]")
+            .unwrap();
+        // Even at 100%, overall is capped at 0.95 to leave headroom for the
+        // postprocess/save step demucs runs after the last tqdm tick.
+        assert!((e.fraction - 0.95).abs() < 1e-4);
+        assert!(e.message.contains("100%"));
+    }
+
+    #[test]
+    fn tqdm_ft_advances_pass_on_wraparound() {
+        let mut t = TqdmTracker::new(true);
+
+        let e = t.feed(" 80%|████████  | 8/10").unwrap();
+        assert!(e.message.contains("pass 1/4"));
+        // first quarter of 4 passes, capped: 0.80/4 = 0.20
+        assert!((e.fraction - 0.20).abs() < 1e-4);
+
+        // pct dropped from 80 → 5, last_pct > 50, so advance to pass 2.
+        let e = t.feed("  5%|          | 0/10").unwrap();
+        assert!(e.message.contains("pass 2/4"));
+        // (1 + 0.05) / 4 = 0.2625
+        assert!((e.fraction - 0.2625).abs() < 1e-4);
+
+        // 95% on pass 2 → (1 + 0.95) / 4 = 0.4875
+        let e = t.feed(" 95%|██████████|").unwrap();
+        assert!(e.message.contains("pass 2/4"));
+        assert!((e.fraction - 0.4875).abs() < 1e-4);
+
+        let _ = t.feed(" 10%|").unwrap(); // → pass 3
+        let _ = t.feed(" 90%|").unwrap();
+        let e = t.feed("  0%|").unwrap(); // → pass 4
+        assert!(e.message.contains("pass 4/4"));
+
+        // last_pct was 0, so a further drop doesn't advance past 4.
+        let e = t.feed("  0%|          |").unwrap();
+        assert!(e.message.contains("pass 4/4"));
+    }
+
+    #[test]
+    fn tqdm_ft_does_not_advance_on_small_dip() {
+        // Within-pass jitter (e.g. 30% → 28% in a chunk boundary) must NOT
+        // be misread as a pass boundary.
+        let mut t = TqdmTracker::new(true);
+        let _ = t.feed(" 30%|").unwrap();
+        let e = t.feed(" 28%|").unwrap();
+        // Still pass 1 — last_pct (30) was not > 50.
+        assert!(e.message.contains("pass 1/4"));
+    }
+
+    #[test]
+    fn tqdm_no_progress_in_chunk_returns_none() {
+        let mut t = TqdmTracker::new(false);
+        assert!(t.feed("nothing interesting here").is_none());
+        assert!(t.feed("Some loaded warning from torch").is_none());
+        // Lines that look superficially like progress but lack the trailing
+        // `|` are also rejected by the regex.
+        assert!(t.feed("loaded 50 weights").is_none());
+    }
+
+    #[test]
+    fn tqdm_picks_last_marker_in_chunk() {
+        // tqdm flushes carriage returns; a single read can include several.
+        let mut t = TqdmTracker::new(false);
+        let chunk = "\r 10%|█         |\r 20%|██        |\r 30%|███       |";
+        let e = t.feed(chunk).unwrap();
+        assert!(e.message.contains("30%"));
+        assert!((e.fraction - 0.30).abs() < 1e-4);
+    }
+
+    #[test]
+    fn tqdm_handles_zero_and_full_percent() {
+        let mut t = TqdmTracker::new(false);
+        let e = t.feed("  0%|          |").unwrap();
+        assert!(e.message.contains("0%"));
+        assert_eq!(e.fraction, 0.0);
+
+        let e = t
+            .feed("100%|██████████| 100/100 [01:00<00:00, 1.67it/s]")
+            .unwrap();
+        assert!(e.message.contains("100%"));
+        assert!((e.fraction - 0.95).abs() < 1e-4);
+    }
 }
