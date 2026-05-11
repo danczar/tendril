@@ -18,16 +18,27 @@ export component QueueItem inherits Rectangle {
     // Clickable means: terminal state with an output folder to open.
     property <bool> openable: root.data.stage == "Done";
 
+    // Width of the X-button hit zone on the right edge: 28px button + the
+    // HorizontalLayout's padding-right (Theme.space-2 = 8px).
+    property <length> x-zone-width: 36px;
+    property <bool> over-x: touch.has-hover && touch.mouse-x > root.width - root.x-zone-width;
+
     height: 72px;
     background: touch.has-hover ? Theme.bg-surface : transparent;
     border-radius: Theme.radius-sm;
 
     animate background { duration: Theme.duration-normal; easing: ease-out; }
 
+    // Single TouchArea for the whole row. We dispatch click destination by
+    // cursor position (right edge = X / remove, elsewhere = open-folder).
+    // Using a nested TouchArea for the X caused hover-state thrash at the
+    // boundary and a blinking row highlight.
     touch := TouchArea {
-        mouse-cursor: root.openable ? pointer : default;
+        mouse-cursor: (root.over-x || root.openable) ? pointer : default;
         clicked => {
-            if root.openable {
+            if root.over-x {
+                root.remove();
+            } else if root.openable {
                 root.open-folder();
             }
         }
@@ -94,12 +105,13 @@ export component QueueItem inherits Rectangle {
             }
         }
 
-        // Remove button
+        // Remove button (visual only; clicks are dispatched by the outer
+        // `touch` TouchArea via `over-x` cursor-position check above).
         Rectangle {
             width: 28px;
             height: 28px;
             border-radius: Theme.radius-xs;
-            background: remove-touch.has-hover ? Theme.bg-surface : transparent;
+            background: root.over-x ? Theme.bg-surface : transparent;
 
             animate background { duration: Theme.duration-fast; easing: ease-out; }
 
@@ -108,13 +120,8 @@ export component QueueItem inherits Rectangle {
                 height: 12px;
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
-                icon-color: remove-touch.has-hover ? Theme.text-secondary : Theme.text-tertiary;
+                icon-color: root.over-x ? Theme.text-secondary : Theme.text-tertiary;
                 animate icon-color { duration: Theme.duration-fast; easing: ease-out; }
-            }
-
-            remove-touch := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { root.remove(); }
             }
         }
     }

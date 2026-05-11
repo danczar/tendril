@@ -59,16 +59,20 @@ pub fn rgba_to_slint_image(rgba: &[u8], w: u32, h: u32) -> Image {
     Image::from_rgba8(buf)
 }
 
-/// Convert queue jobs into a Slint model, reusing decoded `Image`s from
+/// Build the list of queue item rows, reusing decoded `Image`s from
 /// `decoded_cache` when present and decoding (then caching) on miss.
 ///
+/// Returns a `Vec` rather than a `ModelRc` so the caller can decide whether
+/// to wrap it in a fresh model or diff-patch into a persistent `VecModel`
+/// (the latter preserves per-row Slint state like `TouchArea::has-hover`).
+///
 /// `decoded_cache` MUST live on the UI thread (`slint::Image` is `!Send`).
-pub fn queue_items_model_with_cache(
+pub fn build_queue_items(
     queue: &tendril_core::pipeline::queue::JobQueue,
     thumbnail_cache: &std::collections::HashMap<String, Vec<u8>>,
     decoded_cache: &mut std::collections::HashMap<String, Image>,
-) -> ModelRc<QueueItemData> {
-    let items: Vec<QueueItemData> = queue
+) -> Vec<QueueItemData> {
+    queue
         .iter()
         .map(|job| {
             let progress = job.progress_rx.borrow();
@@ -95,8 +99,7 @@ pub fn queue_items_model_with_cache(
                 thumbnail,
             }
         })
-        .collect();
-    ModelRc::new(VecModel::from(items))
+        .collect()
 }
 
 fn stage_display(stage: &PipelineStage) -> (&'static str, Color) {

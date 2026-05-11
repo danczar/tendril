@@ -20,6 +20,13 @@ thread_local! {
     /// so a thread-local cache is sufficient and avoids needing `Send`.
     static QUEUE_THUMB_CACHE: RefCell<HashMap<String, slint::Image>> =
         RefCell::new(HashMap::new());
+    /// Persistent queue model, mutated in place so the Slint repeater keeps
+    /// each `QueueItem` instance across progress ticks. Replacing the model
+    /// wholesale (via `set_queue_items`) recreates the instances and drops
+    /// per-row state like `TouchArea::has-hover`, causing the hover highlight
+    /// to die every 250ms while a job is animating.
+    static QUEUE_MODEL: RefCell<Option<Rc<slint::VecModel<crate::QueueItemData>>>> =
+        const { RefCell::new(None) };
 }
 
 /// Wire all Slint callbacks to their Rust implementations.
@@ -37,26 +44,65 @@ pub fn connect_callbacks(window: &MainWindow, state: SharedState, rt: Handle) {
     connect_file_dropped(window, state, rt);
 }
 
-/// Build the queue model using the UI-thread thumbnail cache. Decodes JPEGs
-/// only on cache miss (avoids re-decoding on every 250ms timer tick) and
-/// evicts entries for jobs no longer in the queue.
+/// Patch the persistent queue VecModel to match the current job queue.
+///
+/// On first call: creates the VecModel and binds it to the window. On
+/// subsequent calls: diffs the new rows against the model and only calls
+/// `set_row_data` / `push` / `remove` for actual changes. Rows whose data
+/// is unchanged are not touched, so the underlying `QueueItem` Slint
+/// instance — and its `TouchArea::has-hover` — is preserved.
 ///
 /// MUST be called from the UI thread.
-fn build_queue_model(
+fn apply_queue_to_model(
+    window: &MainWindow,
     queue: &tendril_core::pipeline::queue::JobQueue,
     raw_thumbnails: &HashMap<String, Vec<u8>>,
-) -> slint::ModelRc<crate::QueueItemData> {
-    QUEUE_THUMB_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
+) {
+    let model = QUEUE_MODEL.with(|m| {
+        let mut borrow = m.borrow_mut();
+        if borrow.is_none() {
+            let vm: Rc<slint::VecModel<crate::QueueItemData>> = Rc::new(slint::VecModel::default());
+            window.set_queue_items(slint::ModelRc::from(vm.clone()));
+            *borrow = Some(vm);
+        }
+        borrow.as_ref().unwrap().clone()
+    });
 
-        // Evict entries for jobs no longer in the queue so memory does not
-        // grow unboundedly with session length.
+    let new_items = QUEUE_THUMB_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
         let live_keys: std::collections::HashSet<String> =
             queue.iter().map(|j| j.source.thumbnail_key()).collect();
         cache.retain(|k, _| live_keys.contains(k));
+        crate::models::build_queue_items(queue, raw_thumbnails, &mut cache)
+    });
 
-        crate::models::queue_items_model_with_cache(queue, raw_thumbnails, &mut cache)
-    })
+    // Walk the model in parallel with new_items. When the row at position i
+    // is a different job, it means the job that was there has been removed
+    // (X button); drop the row and retry the same position. New jobs only
+    // appear at the end (push_back enqueue), handled by the trailing push.
+    let mut i = 0;
+    while i < new_items.len() {
+        if i >= model.row_count() {
+            model.push(new_items[i].clone());
+            i += 1;
+            continue;
+        }
+        let old = model.row_data(i).expect("row_data within row_count");
+        if old.job_id == new_items[i].job_id {
+            if old.progress != new_items[i].progress
+                || old.stage != new_items[i].stage
+                || old.stage_color != new_items[i].stage_color
+            {
+                model.set_row_data(i, new_items[i].clone());
+            }
+            i += 1;
+        } else {
+            model.remove(i);
+        }
+    }
+    while model.row_count() > new_items.len() {
+        model.remove(model.row_count() - 1);
+    }
 }
 
 /// Populate initial dependency status on the UI.
@@ -151,8 +197,7 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(window) = weak_c.upgrade() {
                         let s = state_c.lock().unwrap();
-                        let model = build_queue_model(&s.queue, &s.thumbnail_cache);
-                        window.set_queue_items(model);
+                        apply_queue_to_model(&window, &s.queue, &s.thumbnail_cache);
                     }
                 });
             }
@@ -164,6 +209,10 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
 }
 
 /// Start a Slint timer that periodically refreshes queue progress in the UI.
+///
+/// `apply_queue_to_model` patches the existing model in place: rows whose
+/// progress/stage haven't changed are left untouched, so the Slint repeater
+/// keeps each `QueueItem` instance and its `TouchArea::has-hover` state.
 pub fn start_progress_timer(window: &MainWindow, state: SharedState) {
     let weak = window.as_weak();
     let timer = slint::Timer::default();
@@ -171,13 +220,12 @@ pub fn start_progress_timer(window: &MainWindow, state: SharedState) {
         slint::TimerMode::Repeated,
         std::time::Duration::from_millis(250),
         move || {
-            if let Some(window) = weak.upgrade() {
-                let s = state.lock().unwrap();
-                if !s.queue.is_empty() {
-                    let model = build_queue_model(&s.queue, &s.thumbnail_cache);
-                    window.set_queue_items(model);
-                }
+            let Some(window) = weak.upgrade() else { return };
+            let s = state.lock().unwrap();
+            if s.queue.is_empty() {
+                return;
             }
+            apply_queue_to_model(&window, &s.queue, &s.thumbnail_cache);
         },
     );
     std::mem::forget(timer);
@@ -467,8 +515,7 @@ fn connect_enqueue(window: &MainWindow, state: SharedState) {
             tracing::info!("Enqueued job {id}");
         }
         if let Some(window) = weak.upgrade() {
-            let model = build_queue_model(&state.queue, &state.thumbnail_cache);
-            window.set_queue_items(model);
+            apply_queue_to_model(&window, &state.queue, &state.thumbnail_cache);
 
             // Phase 1: Highlight the clicked row, clear search text
             window.set_enqueued_index(idx);
@@ -518,8 +565,7 @@ fn connect_remove(window: &MainWindow, state: SharedState) {
         state.queue.remove(job_id as u64);
         tracing::info!("Removed job {job_id}");
         if let Some(window) = weak.upgrade() {
-            let model = build_queue_model(&state.queue, &state.thumbnail_cache);
-            window.set_queue_items(model);
+            apply_queue_to_model(&window, &state.queue, &state.thumbnail_cache);
         }
     });
 }
@@ -847,8 +893,7 @@ fn connect_file_dropped(window: &MainWindow, state: SharedState, rt: Handle) {
         let source = tendril_core::pipeline::job::JobSource::LocalFile { path: path.clone() };
         s.queue.enqueue(source);
         if let Some(w) = weak.upgrade() {
-            let model = build_queue_model(&s.queue, &s.thumbnail_cache);
-            w.set_queue_items(model);
+            apply_queue_to_model(&w, &s.queue, &s.thumbnail_cache);
         }
 
         // Extract album art in background
@@ -865,8 +910,7 @@ fn connect_file_dropped(window: &MainWindow, state: SharedState, rt: Handle) {
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(w) = weak.upgrade() {
                         let s = state.lock().unwrap();
-                        let model = build_queue_model(&s.queue, &s.thumbnail_cache);
-                        w.set_queue_items(model);
+                        apply_queue_to_model(&w, &s.queue, &s.thumbnail_cache);
                     }
                 });
             }
