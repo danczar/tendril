@@ -32,6 +32,15 @@ rm -rf "$(dirname "$ICONSET")"
 echo "==> Copying Info.plist..."
 cp "$ROOT/macos/Info.plist" "$CONTENTS/Info.plist"
 
+# Override CFBundleVersion and CFBundleShortVersionString from the workspace
+# Cargo.toml so the macOS About window can't drift from the shipped binary's
+# CARGO_PKG_VERSION. Reads the first `version = "..."` line, which is
+# workspace.package.version (both crates use `version.workspace = true`).
+VERSION=$(awk -F'"' '/^version *= *"/ { print $2; exit }' "$ROOT/Cargo.toml")
+plutil -replace CFBundleVersion -string "$VERSION" "$CONTENTS/Info.plist"
+plutil -replace CFBundleShortVersionString -string "$VERSION" "$CONTENTS/Info.plist"
+echo "    bundled version: $VERSION"
+
 echo "==> Ad-hoc code signing..."
 codesign --force --deep --sign - "$APP_DIR"
 
