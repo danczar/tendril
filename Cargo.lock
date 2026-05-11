@@ -5581,7 +5581,7 @@ dependencies = [
 
 [[package]]
 name = "tendril-core"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "directories",
  "flate2",
@@ -5601,7 +5601,7 @@ dependencies = [
 
 [[package]]
 name = "tendril-ui"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "futures",
