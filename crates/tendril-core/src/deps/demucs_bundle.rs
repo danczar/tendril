@@ -261,26 +261,47 @@ pub async fn update_demucs(dirs: &AppDirs) -> Result<(), DependencyError> {
     Ok(())
 }
 
-/// Install PyTorch and torchcodec.
+/// Pinned PyTorch / torchaudio versions.
+///
+/// These are deliberately pinned rather than floating. torchaudio >= 2.9 routes
+/// all audio I/O through `torchcodec`, which loads ffmpeg **shared libraries**
+/// at runtime — making demucs depend on whatever ffmpeg the host happens to
+/// have installed (and break when, say, a `brew upgrade` bumps it to an
+/// unsupported major or removes a linked dylib). 2.7.x is the last line that
+/// uses torchaudio's native `soundfile` (libsndfile) backend for WAV I/O, which
+/// is fully self-contained and needs no ffmpeg at all. demucs only reads the
+/// input via the bundled ffmpeg binary and writes WAV stems via `ta.save`, so
+/// soundfile covers the write path completely.
+const TORCH_PIN: &str = "torch==2.7.1";
+const TORCHAUDIO_PIN: &str = "torchaudio==2.7.1";
+
+/// Install PyTorch, torchaudio, and the soundfile audio backend.
 ///
 /// On Windows/Linux, installs CUDA-enabled PyTorch which automatically falls
 /// back to CPU if no GPU is present. On macOS, installs the default (MPS-capable)
-/// build from PyPI.
+/// build from PyPI. torchcodec is intentionally NOT installed — see `TORCH_PIN`.
 async fn install_torch(
     python_bin: &std::path::Path,
     progress_tx: Option<&watch::Sender<DownloadProgress>>,
 ) -> Result<(), DependencyError> {
     if cfg!(target_os = "macos") {
         // macOS: install from PyPI (includes MPS support on Apple Silicon)
-        tracing::info!("Installing PyTorch from PyPI (macOS)");
-        run_pip_install_streaming(python_bin, &["torch"], "PyTorch", progress_tx, 0.4).await?;
+        tracing::info!("Installing {TORCH_PIN} + {TORCHAUDIO_PIN} from PyPI (macOS)");
+        run_pip_install_streaming(
+            python_bin,
+            &[TORCH_PIN, TORCHAUDIO_PIN],
+            "PyTorch",
+            progress_tx,
+            0.4,
+        )
+        .await?;
     } else {
         // Windows/Linux: install CUDA-enabled PyTorch (falls back to CPU automatically)
         let index_url = "https://download.pytorch.org/whl/cu126";
-        tracing::info!("Installing CUDA-enabled PyTorch from {index_url}");
+        tracing::info!("Installing CUDA-enabled {TORCH_PIN} + {TORCHAUDIO_PIN} from {index_url}");
         run_pip_install_streaming(
             python_bin,
-            &["torch", "--index-url", index_url],
+            &[TORCH_PIN, TORCHAUDIO_PIN, "--index-url", index_url],
             "PyTorch",
             progress_tx,
             0.4,
@@ -288,8 +309,10 @@ async fn install_torch(
         .await?;
     }
 
-    // torchcodec from PyPI (works with any torch variant)
-    run_pip_install_streaming(python_bin, &["torchcodec"], "PyTorch", progress_tx, 0.7).await?;
+    // soundfile (libsndfile) is torchaudio's WAV backend and replaces torchcodec
+    // entirely. Installed from PyPI (the CUDA index above doesn't carry it).
+    tracing::info!("Installing soundfile (libsndfile audio backend)");
+    run_pip_install_streaming(python_bin, &["soundfile"], "PyTorch", progress_tx, 0.7).await?;
 
     Ok(())
 }

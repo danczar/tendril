@@ -21,16 +21,14 @@ pub async fn check_ytdlp_latest(client: &reqwest::Client) -> Option<String> {
     Some(release.tag_name)
 }
 
-/// Check the latest ffmpeg release tag.
+/// Check the latest ffmpeg release tag for the update banner.
 ///
-/// On Windows we download from BtbN/FFmpeg-Builds (shared build with
-/// DLLs needed by torchcodec); on macOS/Linux we use the static
-/// binaries from eugeneware/ffmpeg-static. The latest-version source
-/// must mirror the download source so the update banner is honest.
-///
-/// BtbN tag format is `n7.1` / `n7.1.1`; eugeneware tags as `bX.Y.Z`
-/// (currently capped at `b6.1.1` — the upstream hasn't shipped 7.x).
-/// Both formats are normalized by `version_compare`.
+/// The reported "latest" must mirror what we'd actually install, so the banner
+/// is honest. On macOS/Linux the download is **pinned** to
+/// `ffmpeg::FFMPEG_STATIC_TAG`, so that's what we report — no false update
+/// arrow for an upstream version we won't pull. On Windows we still track BtbN's
+/// rolling latest (its dated autobuild tags expire, so it can't be pinned the
+/// same way); the binary works regardless of version.
 pub async fn check_ffmpeg_latest(client: &reqwest::Client) -> Option<String> {
     #[cfg(target_os = "windows")]
     {
@@ -41,9 +39,7 @@ pub async fn check_ffmpeg_latest(client: &reqwest::Client) -> Option<String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let release = github_release::latest_release(client, "eugeneware", "ffmpeg-static")
-            .await
-            .ok()?;
-        Some(release.tag_name)
+        let _ = client;
+        Some(crate::deps::ffmpeg::FFMPEG_STATIC_TAG.to_string())
     }
 }

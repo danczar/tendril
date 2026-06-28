@@ -97,6 +97,13 @@ pub async fn separate(
     cmd.stdout(std::process::Stdio::null());
     cmd.stderr(std::process::Stdio::piped());
 
+    tracing::debug!(
+        "Running demucs: model={model_name} device={gpu_backend:?} jobs={} input={} python={}",
+        num_jobs(),
+        input.display(),
+        python_bin.display()
+    );
+
     let mut child = cmd
         .spawn()
         .map_err(|e| SplitterError::Inference(format!("failed to spawn demucs: {e}")))?;
@@ -139,6 +146,10 @@ pub async fn separate(
     let stderr_output = stderr_handle.await.unwrap_or_default();
 
     if !status.success() {
+        // The returned error only carries the last 15 lines; log the full
+        // demucs stderr at debug so the complete traceback (e.g. a Python
+        // import/backend failure) is recoverable from the debug log.
+        tracing::debug!("demucs failed; full stderr:\n{stderr_output}");
         let last_lines: String = stderr_output
             .lines()
             .rev()

@@ -7,3 +7,4 @@ rustypipe_cache.json
 rustypipe_reports/
 ARCHITECTURE.md
 *.icns
+.claude

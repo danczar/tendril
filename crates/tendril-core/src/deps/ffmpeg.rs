@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use crate::deps::github_release;
 use crate::error::DependencyError;
@@ -13,22 +14,32 @@ const FFPROBE_BINARY_NAME: &str = "ffprobe.exe";
 #[cfg(not(target_os = "windows"))]
 const FFPROBE_BINARY_NAME: &str = "ffprobe";
 
+/// Pinned eugeneware/ffmpeg-static release (macOS/Linux).
+///
+/// Pinned rather than tracking `latest` so the bundled ffmpeg is reproducible
+/// and Tendril never silently inherits an upstream ffmpeg change. These are
+/// immutable git tags (`bX.Y.Z`); `b6.1.1` is the newest as of this writing.
+#[cfg(not(target_os = "windows"))]
+pub(crate) const FFMPEG_STATIC_TAG: &str = "b6.1.1";
+
 /// Ensure ffmpeg and ffprobe are available, returning the path to use.
 ///
 /// Priority:
 /// - **macOS/Linux**: system PATH > managed > download. Prefer whatever the
 ///   user already has installed; only fall back to a managed copy if no
 ///   system ffmpeg is on PATH.
-/// - **Windows**: managed > system PATH > download. The Windows managed
-///   build ships shared-library DLLs that torchcodec needs at runtime; if
-///   they're already there, prefer them over any system ffmpeg.
+/// - **Windows**: managed > system PATH > download. The Windows managed build
+///   is the BtbN shared build; preferring it over a system ffmpeg keeps the
+///   bundled, known-good binary in control. (It historically also satisfied
+///   torchcodec's runtime DLL needs; torchcodec is no longer used, but the
+///   shared build still provides a perfectly good ffmpeg/ffprobe binary.)
 ///
 /// Managed downloads come from BtbN/FFmpeg-Builds (Windows shared build) or
 /// eugeneware/ffmpeg-static (macOS/Linux static).
 pub async fn ensure(client: &reqwest::Client, bin_dir: &Path) -> Result<PathBuf, DependencyError> {
     let managed_path = bin_dir.join(BINARY_NAME);
     let managed_ok = is_install_complete(bin_dir);
-    let system = find_on_path(BINARY_NAME);
+    let system = find_working_system_ffmpeg();
 
     #[cfg(target_os = "windows")]
     {
@@ -217,7 +228,9 @@ async fn download_static_builds(
     client: &reqwest::Client,
     bin_dir: &Path,
 ) -> Result<(), DependencyError> {
-    let release = github_release::latest_release(client, "eugeneware", "ffmpeg-static").await?;
+    let release =
+        github_release::tagged_release(client, "eugeneware", "ffmpeg-static", FFMPEG_STATIC_TAG)
+            .await?;
 
     let ffmpeg_path = bin_dir.join(BINARY_NAME);
     download_asset(client, &release, ASSET_NAME, &ffmpeg_path, "ffmpeg").await?;
@@ -288,6 +301,54 @@ async fn download_asset(
 /// PATH — so a Homebrew ffmpeg at `/opt/homebrew/bin/ffmpeg` is invisible
 /// to a `find_on_path` that only consults `$PATH`. The fallback list covers
 /// the common package-manager prefixes; first hit wins.
+/// Verify a binary actually launches: `<bin> -version` must exit 0.
+///
+/// A binary can be present and on PATH yet still be unusable — the classic
+/// case is a Homebrew ffmpeg whose shared libraries were removed by an
+/// unrelated `brew upgrade` (e.g. a bumped libass), so it dyld-faults the
+/// instant it's executed. yt-dlp detects ffmpeg the same way, so if this
+/// check fails, yt-dlp will also report "ffmpeg not found".
+fn runs_ok(bin: &Path) -> bool {
+    std::process::Command::new(bin)
+        .arg("-version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Find a *usable* system ffmpeg, or `None` to fall back to the managed build.
+///
+/// "Usable" means stricter than "on PATH": we require a co-located `ffprobe`
+/// (yt-dlp needs both, and `--ffmpeg-location` points at one directory) and
+/// that both binaries actually execute. This is what makes ffmpeg resolution
+/// universal across machines — a broken or partial system install is skipped
+/// in favor of Tendril's self-contained static build instead of failing the
+/// download with a confusing "ffmpeg not found".
+pub fn find_working_system_ffmpeg() -> Option<PathBuf> {
+    let ffmpeg = find_on_path(BINARY_NAME)?;
+    let dir = ffmpeg.parent()?;
+    let ffprobe = dir.join(FFPROBE_BINARY_NAME);
+
+    if !ffprobe.is_file() {
+        tracing::warn!(
+            "System ffmpeg at {} has no ffprobe alongside it; using managed build",
+            ffmpeg.display()
+        );
+        return None;
+    }
+    if !runs_ok(&ffmpeg) || !runs_ok(&ffprobe) {
+        tracing::warn!(
+            "System ffmpeg at {} failed to execute (missing shared libraries?); using managed build",
+            ffmpeg.display()
+        );
+        return None;
+    }
+    Some(ffmpeg)
+}
+
 pub fn find_on_path(name: &str) -> Option<PathBuf> {
     if let Some(path_var) = std::env::var_os("PATH")
         && let Some(found) = std::env::split_paths(&path_var).find_map(|dir| {

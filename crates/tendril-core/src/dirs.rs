@@ -33,7 +33,18 @@ impl AppDirs {
         std::fs::create_dir_all(&self.config_dir)?;
         std::fs::create_dir_all(&self.data_dir)?;
         std::fs::create_dir_all(&self.cache_dir)?;
+        std::fs::create_dir_all(self.log_dir())?;
         Ok(())
+    }
+
+    /// Directory where log files are written.
+    pub fn log_dir(&self) -> PathBuf {
+        self.data_dir.join("logs")
+    }
+
+    /// Path to the log file for the current session.
+    pub fn log_file(&self) -> PathBuf {
+        self.log_dir().join("tendril.log")
     }
 
     /// Directory where external binaries (ffmpeg, yt-dlp) are stored.

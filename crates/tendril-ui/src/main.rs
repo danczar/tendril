@@ -9,17 +9,12 @@ mod state;
 use anyhow::Result;
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "tendril=info".into()),
-        )
-        .init();
+    // Resolve directories first so logging can write to a file under data_dir.
+    let dirs = tendril_core::dirs::AppDirs::resolve()?;
 
+    init_logging(&dirs);
     tracing::info!("Starting Tendril v{}", env!("CARGO_PKG_VERSION"));
 
-    // Initialize core
-    let dirs = tendril_core::dirs::AppDirs::resolve()?;
     let config = tendril_core::config::Config::load(&dirs.config_dir)?;
 
     // Build shared state
@@ -144,4 +139,56 @@ fn main() -> Result<()> {
 
     tracing::info!("Shutting down");
     Ok(())
+}
+
+/// Set up logging: human-readable lines to stderr (for terminal runs) plus a
+/// persistent debug log file under the app data dir (for bundled `.app` runs
+/// that have no console).
+///
+/// Levels:
+/// - stderr defaults to `tendril=info`. Passing `debug` / `-v` / `--verbose`
+///   on the command line, or setting `RUST_LOG`, raises it to debug across the
+///   tendril crates (including yt-dlp and pip output).
+/// - the file always captures debug-level detail regardless, so a failed
+///   download leaves a complete record to inspect afterwards.
+fn init_logging(dirs: &tendril_core::dirs::AppDirs) {
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+
+    const DEBUG_DIRECTIVES: &str = "tendril_core=debug,tendril_ui=debug,deps=debug";
+
+    let debug_flag = std::env::args()
+        .skip(1)
+        .any(|a| matches!(a.as_str(), "debug" | "-d" | "--debug" | "-v" | "--verbose"));
+    let stderr_default = if debug_flag {
+        DEBUG_DIRECTIVES
+    } else {
+        "tendril=info"
+    };
+
+    let stderr_layer = fmt::layer().with_writer(std::io::stderr).with_filter(
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(stderr_default)),
+    );
+
+    let log_path = dirs.log_file();
+    let file_layer = std::fs::File::create(&log_path).ok().map(|file| {
+        let filter = EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| DEBUG_DIRECTIVES.to_string()),
+        );
+        fmt::layer()
+            .with_ansi(false)
+            .with_writer(move || file.try_clone().expect("clone log file handle"))
+            .with_filter(filter)
+    });
+    let logging_to_file = file_layer.is_some();
+
+    tracing_subscriber::registry()
+        .with(stderr_layer)
+        .with(file_layer)
+        .init();
+
+    if logging_to_file {
+        tracing::info!("Debug log: {}", log_path.display());
+    } else {
+        tracing::warn!("Could not open log file at {}", log_path.display());
+    }
 }

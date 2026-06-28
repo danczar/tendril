@@ -94,11 +94,13 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
 }
 
 /// Resolve ffmpeg state + version live, mirroring `ffmpeg::ensure()` priority:
-/// macOS/Linux prefer system; Windows prefers managed (its shared-build DLLs
-/// are required by torchcodec).
+/// macOS/Linux prefer a *working* system ffmpeg; Windows prefers managed. A
+/// system ffmpeg that fails to execute (e.g. a Homebrew build with missing
+/// dylibs) is ignored here just as it is in `ensure`, so the UI never advertises
+/// an ffmpeg the pipeline can't actually use.
 fn ffmpeg_status(dirs: &AppDirs) -> DependencyStatus {
     let managed = dirs.bin_dir().join(super::ffmpeg_binary_name());
-    let system = super::ffmpeg::find_on_path(super::ffmpeg_binary_name());
+    let system = super::ffmpeg::find_working_system_ffmpeg();
 
     let (binary, state) = resolved(managed, system);
 

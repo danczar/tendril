@@ -977,7 +977,10 @@ fn resolve_ffmpeg(dirs: &tendril_core::dirs::AppDirs) -> std::path::PathBuf {
     let managed = dirs
         .bin_dir()
         .join(tendril_core::deps::ffmpeg_binary_name());
-    let system = tendril_core::deps::ffmpeg::find_on_path(tendril_core::deps::ffmpeg_binary_name());
+    // Only accept a system ffmpeg that actually runs and has a co-located
+    // ffprobe — otherwise prefer the managed static build. This keeps the
+    // pipeline working on machines whose Homebrew/system ffmpeg is broken.
+    let system = tendril_core::deps::ffmpeg::find_working_system_ffmpeg();
 
     #[cfg(target_os = "windows")]
     {
