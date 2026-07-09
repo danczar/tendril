@@ -84,7 +84,7 @@ If a song has already been processed, the result shows a folder icon instead of 
 
 ### Requirements
 
-- **Rust** 1.85+ ([rustup.rs](https://rustup.rs)) — edition 2024
+- **Rust** 1.88+ ([rustup.rs](https://rustup.rs)) — edition 2024
 - **Platform SDK**: Xcode Command Line Tools on macOS, Visual Studio Build Tools on Windows
 
 ### Build
