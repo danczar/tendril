@@ -19,7 +19,7 @@ export component SegmentedSelect inherits Rectangle {
             horizontal-stretch: 1;
             border-radius: Theme.radius-xs;
             background: idx == root.current-index ? Theme.bg-surface
-                      : seg-touch.has-hover ? #ffffff0a
+                      : seg-touch.has-hover ? Theme.border-subtle
                       : transparent;
 
             animate background { duration: Theme.duration-fast; easing: ease-out; }

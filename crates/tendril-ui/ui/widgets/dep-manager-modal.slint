@@ -29,9 +29,26 @@ export component DepManagerModal inherits Rectangle {
 
     animate opacity { duration: Theme.duration-slow; easing: ease-out; }
 
-    if root.showing: Rectangle {
+    // The `opacity > 0` arm keeps the subtree alive while the close fade
+    // plays out.
+    if root.showing || root.opacity > 0: Rectangle {
         width: 100%;
         height: 100%;
+
+        // Keyboard-only scope so Escape closes the modal.
+        esc-scope := FocusScope {
+            width: 0;
+            height: 0;
+            init => { self.focus(); }
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    root.close();
+                    accept
+                } else {
+                    reject
+                }
+            }
+        }
 
         // Backdrop
         Rectangle {
@@ -278,6 +295,7 @@ export component DepManagerModal inherits Rectangle {
                         text: root.progress-status;
                         color: Theme.text-tertiary;
                         font-size: Theme.text-xs;
+                        wrap: word-wrap;
                     }
                 }
             }

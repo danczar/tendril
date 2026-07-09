@@ -68,7 +68,10 @@ export component ResultRow inherits Rectangle {
             width: parent.width;
             height: 72px;
 
-            background: @linear-gradient(180deg, #1b1a1700, #1b1a17dd 40%, #1b1a17f0);
+            background: @linear-gradient(180deg,
+                Theme.bg-base.transparentize(100%) 0%,
+                Theme.bg-base.transparentize(13%) 40%,
+                Theme.bg-base.transparentize(6%) 100%);
 
             VerticalLayout {
                 alignment: end;
@@ -108,7 +111,7 @@ export component ResultRow inherits Rectangle {
             border-radius: root.hovered ? Theme.radius-sm : Theme.radius-xs;
             background: root.hovered
                 ? (add-touch.has-hover ? Theme.accent-hover : Theme.accent)
-                : #1b1a1766;
+                : Theme.bg-base.transparentize(60%);
 
             animate width { duration: 200ms; easing: ease-out; }
             animate height { duration: 200ms; easing: ease-out; }

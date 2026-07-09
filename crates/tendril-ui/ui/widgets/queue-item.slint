@@ -110,6 +110,7 @@ export component QueueItem inherits Rectangle {
         Rectangle {
             width: 28px;
             height: 28px;
+            y: (parent.height - self.height) / 2;
             border-radius: Theme.radius-xs;
             background: root.over-x ? Theme.bg-surface : transparent;
 

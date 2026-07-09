@@ -213,9 +213,15 @@ pub fn start_pipeline_runner(state: SharedState, rt: Handle, weak: slint::Weak<M
 /// `apply_queue_to_model` patches the existing model in place: rows whose
 /// progress/stage haven't changed are left untouched, so the Slint repeater
 /// keeps each `QueueItem` instance and its `TouchArea::has-hover` state.
+///
+/// Also mirrors pipeline activity into the status bar ("Splitting — <title>"),
+/// restoring "Ready" once the last active job reaches a terminal stage. Only
+/// transitions touch `status-message`, so idle-time messages (search results,
+/// dependency hints) aren't clobbered.
 pub fn start_progress_timer(window: &MainWindow, state: SharedState) {
     let weak = window.as_weak();
     let timer = slint::Timer::default();
+    let was_active = std::cell::Cell::new(false);
     timer.start(
         slint::TimerMode::Repeated,
         std::time::Duration::from_millis(250),
@@ -226,6 +232,31 @@ pub fn start_progress_timer(window: &MainWindow, state: SharedState) {
                 return;
             }
             apply_queue_to_model(&window, &s.queue, &s.thumbnail_cache);
+
+            let active = s.queue.iter().find_map(|job| {
+                let verb = match job.progress_rx.borrow().stage {
+                    PipelineStage::Downloading => "Downloading",
+                    PipelineStage::Splitting => "Splitting",
+                    PipelineStage::Converting => "Converting",
+                    PipelineStage::Mixing => "Mixing",
+                    _ => return None,
+                };
+                Some(format!("{verb} \u{2014} {}", job.source.display_name()))
+            });
+            match active {
+                Some(msg) => {
+                    was_active.set(true);
+                    let msg = slint::SharedString::from(msg);
+                    if window.get_status_message() != msg {
+                        window.set_status_message(msg);
+                    }
+                }
+                None => {
+                    if was_active.replace(false) {
+                        window.set_status_message("Ready".into());
+                    }
+                }
+            }
         },
     );
     std::mem::forget(timer);
@@ -233,6 +264,7 @@ pub fn start_progress_timer(window: &MainWindow, state: SharedState) {
 
 fn connect_search(window: &MainWindow, state: SharedState, rt: Handle) {
     let debounce_timer = Rc::new(slint::Timer::default());
+    let collapse_cleanup_timer = Rc::new(slint::Timer::default());
 
     // Live search — debounced 300ms after each keystroke
     {
@@ -253,6 +285,23 @@ fn connect_search(window: &MainWindow, state: SharedState, rt: Handle) {
                 if let Some(w) = weak_clear.upgrade() {
                     w.set_searching(false);
                     w.set_results_collapsing(true);
+                    // Once the collapse animation finishes, actually drop the
+                    // rows so the empty state can appear instead of a blank
+                    // void of zero-height rows. Guarded on `results-collapsing`
+                    // in case a newer search completed meanwhile.
+                    let weak_done = weak_clear.clone();
+                    collapse_cleanup_timer.start(
+                        slint::TimerMode::SingleShot,
+                        std::time::Duration::from_millis(350),
+                        move || {
+                            if let Some(w) = weak_done.upgrade()
+                                && w.get_results_collapsing()
+                            {
+                                w.set_search_results(slint::ModelRc::default());
+                                w.set_results_collapsing(false);
+                            }
+                        },
+                    );
                 }
                 return;
             }
@@ -362,7 +411,9 @@ fn perform_search(query: String, state: SharedState, weak: slint::Weak<MainWindo
                         window.set_enqueued_index(-1);
                         let model = crate::models::search_results_model(&results, &output_dir);
                         window.set_search_results(model);
-                        window.set_status_message("Search complete".into());
+                        window.set_status_message(
+                            format!("{count} result{}", if count == 1 { "" } else { "s" }).into(),
+                        );
                     }
                 });
 
@@ -644,6 +695,19 @@ fn connect_settings(window: &MainWindow, state: SharedState) {
     });
 }
 
+/// Compress a multi-line error (e.g. a full pip stderr dump) into one short
+/// status line for the dep modal. The complete error is always in the log.
+fn short_err(e: impl std::fmt::Display) -> String {
+    let s = e.to_string().replace('\n', " ");
+    if s.chars().count() > 240 {
+        let mut out: String = s.chars().take(240).collect();
+        out.push('\u{2026}');
+        out
+    } else {
+        s
+    }
+}
+
 fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
     // Download all deps
     {
@@ -709,7 +773,7 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
                     }
                     Err(e) => {
                         tracing::error!("Dependency download failed: {e}");
-                        let msg = e.to_string();
+                        let msg = short_err(&e);
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(w) = weak.upgrade() {
                                 w.set_deps_downloading(false);
@@ -768,7 +832,7 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
                     }
                     Err(e) => {
                         tracing::error!("Failed to update {dep_name}: {e}");
-                        let msg = e.to_string();
+                        let msg = short_err(&e);
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(w) = weak.upgrade() {
                                 w.set_deps_downloading(false);
