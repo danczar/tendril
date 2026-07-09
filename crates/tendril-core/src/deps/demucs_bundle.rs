@@ -54,6 +54,22 @@ fn python_triple() -> &'static str {
     }
 }
 
+/// Directory where pip installs packages inside the managed Python env.
+pub(crate) fn site_packages_dir(dirs: &AppDirs) -> PathBuf {
+    let python_root = dirs.demucs_dir().join("python");
+    if cfg!(target_os = "windows") {
+        python_root.join("Lib").join("site-packages")
+    } else {
+        let major_minor = PYTHON_VERSION
+            .rsplit_once('.')
+            .map_or(PYTHON_VERSION, |(mm, _)| mm);
+        python_root
+            .join("lib")
+            .join(format!("python{major_minor}"))
+            .join("site-packages")
+    }
+}
+
 /// Build the download URL for python-build-standalone.
 fn python_download_url() -> String {
     let triple = python_triple();

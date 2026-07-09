@@ -68,6 +68,7 @@ export component MainWindow inherits Window {
     callback download-deps();
     callback update-dep(string);
     callback update-all-deps();
+    callback open-dep-location(string);
     callback check-deps();
     callback browse-output-dir();
     callback file-dropped(string);
@@ -305,6 +306,7 @@ export component MainWindow inherits Window {
         download-deps => { root.download-deps(); }
         update-dep(name) => { root.update-dep(name); }
         update-all-deps => { root.update-all-deps(); }
+        open-dep-location(name) => { root.open-dep-location(name); }
         close => { root.deps-visible = false; }
     }
 

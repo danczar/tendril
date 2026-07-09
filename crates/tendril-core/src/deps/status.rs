@@ -25,6 +25,10 @@ pub struct DependencyStatus {
     /// Whether a newer version is available (set async by update_check).
     pub update_available: bool,
     pub latest_version: Option<String>,
+    /// Where the dependency lives on disk (binary path or package dir),
+    /// when installed. For ffmpeg this is the *resolved* binary — managed
+    /// or system — so the UI shows which one the pipeline actually runs.
+    pub location: Option<PathBuf>,
 }
 
 /// Check the installation status of all dependencies.
@@ -38,7 +42,13 @@ pub struct DependencyStatus {
 /// installing or removing a system ffmpeg, producing bogus update arrows.
 pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
     let versions = InstalledVersions::load(&dirs.data_dir);
-    let python_exists = dirs.python_bin().exists();
+    let python_bin = dirs.python_bin();
+    let python_exists = python_bin.exists();
+    let site_packages = super::demucs_bundle::site_packages_dir(dirs);
+    let torch_dir = site_packages.join("torch");
+    let demucs_dir = site_packages.join("demucs");
+    let ytdlp_bin = dirs.bin_dir().join(super::ytdlp_binary_name());
+    let ytdlp_exists = ytdlp_bin.exists();
 
     vec![
         DependencyStatus {
@@ -52,6 +62,7 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
             updatable: false, // pinned per Tendril release
             update_available: false,
             latest_version: None,
+            location: python_exists.then_some(python_bin),
         },
         DependencyStatus {
             name: "PyTorch".into(),
@@ -64,6 +75,7 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
             updatable: false, // pinned per Tendril release
             update_available: false,
             latest_version: None,
+            location: torch_dir.is_dir().then_some(torch_dir),
         },
         DependencyStatus {
             name: "demucs".into(),
@@ -76,10 +88,11 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
             updatable: true,
             update_available: false,
             latest_version: None,
+            location: demucs_dir.is_dir().then_some(demucs_dir),
         },
         DependencyStatus {
             name: "yt-dlp".into(),
-            state: if dirs.bin_dir().join(super::ytdlp_binary_name()).exists() {
+            state: if ytdlp_exists {
                 DepState::Installed
             } else {
                 DepState::Missing
@@ -88,6 +101,7 @@ pub fn check_all(dirs: &AppDirs) -> Vec<DependencyStatus> {
             updatable: true,
             update_available: false,
             latest_version: None,
+            location: ytdlp_exists.then_some(ytdlp_bin),
         },
         ffmpeg_status(dirs),
     ]
@@ -104,9 +118,9 @@ fn ffmpeg_status(dirs: &AppDirs) -> DependencyStatus {
 
     let (binary, state) = resolved(managed, system);
 
-    let (version, state) = match (binary, state) {
-        (Some(path), Some(s)) => (query_version(&path), s),
-        _ => (None, DepState::Missing),
+    let (version, state, location) = match (binary, state) {
+        (Some(path), Some(s)) => (query_version(&path), s, Some(path)),
+        _ => (None, DepState::Missing, None),
     };
 
     DependencyStatus {
@@ -116,6 +130,7 @@ fn ffmpeg_status(dirs: &AppDirs) -> DependencyStatus {
         latest_version: None,
         version,
         state,
+        location,
     }
 }
 

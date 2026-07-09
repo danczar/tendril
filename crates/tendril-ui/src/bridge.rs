@@ -665,6 +665,24 @@ fn open_in_file_browser(path: &std::path::Path) {
     let _ = std::process::Command::new("xdg-open").arg(path).spawn();
 }
 
+/// Reveal a path in the platform file browser, selecting it rather than
+/// opening it (falls back to opening the parent directory on Linux).
+fn reveal_in_file_browser(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .spawn();
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("explorer")
+        .arg(format!("/select,{}", path.display()))
+        .spawn();
+    #[cfg(target_os = "linux")]
+    if let Some(parent) = path.parent() {
+        let _ = std::process::Command::new("xdg-open").arg(parent).spawn();
+    }
+}
+
 fn connect_settings(window: &MainWindow, state: SharedState) {
     let weak = window.as_weak();
     window.on_settings_changed(move || {
@@ -785,6 +803,24 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
                     }
                 }
             });
+        });
+    }
+
+    // Reveal a dependency's install location in the file browser
+    {
+        let state = state.clone();
+        window.on_open_dep_location(move |dep_name| {
+            let dirs = { state.lock().unwrap().dirs.clone() };
+            let mgr = tendril_core::deps::DependencyManager::new(&dirs);
+            if let Some(loc) = mgr
+                .check_status()
+                .into_iter()
+                .find(|d| d.name == dep_name.as_str())
+                .and_then(|d| d.location)
+            {
+                tracing::info!("Revealing {dep_name} at {}", loc.display());
+                reveal_in_file_browser(&loc);
+            }
         });
     }
 
@@ -1026,6 +1062,19 @@ async fn extract_album_art(
     }
 }
 
+/// Shorten a path for display: replace the home-dir prefix with `~`.
+fn display_path(p: &std::path::Path) -> slint::SharedString {
+    let s = p.display().to_string();
+    #[cfg(not(target_os = "windows"))]
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = std::path::Path::new(&home).display().to_string();
+        if let Some(rest) = s.strip_prefix(&home) {
+            return format!("~{rest}").into();
+        }
+    }
+    s.into()
+}
+
 /// Convert dependency statuses to a Slint model.
 pub(crate) fn dep_status_model(
     statuses: &[tendril_core::deps::DependencyStatus],
@@ -1036,6 +1085,7 @@ pub(crate) fn dep_status_model(
             name: s.name.clone().into(),
             version: s.version.clone().unwrap_or_default().into(),
             latest_version: s.latest_version.clone().unwrap_or_default().into(),
+            location: s.location.as_deref().map(display_path).unwrap_or_default(),
             status: match s.state {
                 tendril_core::deps::DepState::Installed => "installed",
                 tendril_core::deps::DepState::System => "system",

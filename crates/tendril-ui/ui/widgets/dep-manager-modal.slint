@@ -7,6 +7,7 @@ export struct DepItemData {
     latest-version: string,
     status: string,         // "installed", "system", "missing"
     update-available: bool,
+    location: string,       // install path on disk ("" when missing)
 }
 
 export component DepManagerModal inherits Rectangle {
@@ -21,7 +22,12 @@ export component DepManagerModal inherits Rectangle {
     callback download-deps();
     callback update-dep(string);
     callback update-all-deps();
+    callback open-dep-location(string);
     callback close();
+
+    // Install path of the currently hovered row, shown in a tooltip strip.
+    property <string> hovered-location;
+    changed showing => { root.hovered-location = ""; }
 
     width: 100%;
     height: 100%;
@@ -130,7 +136,21 @@ export component DepManagerModal inherits Rectangle {
                         border-radius: Theme.radius-xs;
                         animate background { duration: Theme.duration-fast; }
 
-                        dep-row-touch := TouchArea {}
+                        dep-row-touch := TouchArea {
+                            mouse-cursor: dep.location != "" ? pointer : default;
+                            clicked => {
+                                if dep.location != "" {
+                                    root.open-dep-location(dep.name);
+                                }
+                            }
+                            changed has-hover => {
+                                if self.has-hover {
+                                    root.hovered-location = dep.location;
+                                } else if root.hovered-location == dep.location {
+                                    root.hovered-location = "";
+                                }
+                            }
+                        }
 
                         HorizontalLayout {
                             padding-left: Theme.space-3;
@@ -297,6 +317,32 @@ export component DepManagerModal inherits Rectangle {
                         font-size: Theme.text-xs;
                         wrap: word-wrap;
                     }
+                }
+            }
+
+            // Location tooltip — floats over the card bottom while a row
+            // with a resolved install path is hovered; click reveals it in
+            // the file browser.
+            if root.hovered-location != "": Rectangle {
+                x: Theme.space-4;
+                y: parent.height - self.height - Theme.space-4;
+                width: parent.width - 2 * Theme.space-4;
+                height: loc-text.preferred-height + 2 * Theme.space-2;
+                background: Theme.bg-surface;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: Theme.border-default;
+                drop-shadow-blur: 12px;
+                drop-shadow-color: #00000060;
+
+                loc-text := Text {
+                    x: Theme.space-2;
+                    y: Theme.space-2;
+                    width: parent.width - 2 * Theme.space-2;
+                    text: root.hovered-location;
+                    color: Theme.text-secondary;
+                    font-size: Theme.text-xs;
+                    wrap: word-wrap;
                 }
             }
         }
