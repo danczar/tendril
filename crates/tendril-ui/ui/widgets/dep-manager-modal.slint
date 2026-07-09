@@ -250,14 +250,27 @@ export component DepManagerModal inherits Rectangle {
                         height: 6px;
                         background: Theme.bg-base;
                         border-radius: 3px;
+                        clip: true;
 
-                        Rectangle {
+                        // Determinate fill (install flow reports fractions)
+                        if root.progress > 0.0: Rectangle {
+                            x: 0;
                             width: parent.width * root.progress;
                             height: parent.height;
                             background: Theme.accent;
                             border-radius: 3px;
 
                             animate width { duration: Theme.duration-normal; easing: ease-out; }
+                        }
+
+                        // Indeterminate sweep (update flows report no fractions)
+                        if root.progress <= 0.0: Rectangle {
+                            property <float> t: Math.mod(animation-tick() / 1.2s, 1.0);
+                            x: parent.width * (1.35 * self.t - 0.35);
+                            width: parent.width * 0.35;
+                            height: parent.height;
+                            background: Theme.accent;
+                            border-radius: 3px;
                         }
                     }
 

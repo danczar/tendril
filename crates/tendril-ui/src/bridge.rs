@@ -658,6 +658,7 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
             // Set downloading state
             if let Some(w) = weak.upgrade() {
                 w.set_deps_downloading(true);
+                w.set_deps_progress(0.0);
                 w.set_deps_status("Starting download...".into());
             }
 
@@ -733,6 +734,12 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
             let state = state.clone();
             let weak = weak.clone();
 
+            if let Some(w) = weak.upgrade() {
+                w.set_deps_downloading(true);
+                w.set_deps_progress(0.0);
+                w.set_deps_status(format!("Updating {dep_name}...").into());
+            }
+
             rt.spawn(async move {
                 let dirs = { state.lock().unwrap().dirs.clone() };
                 let mgr = tendril_core::deps::DependencyManager::new(&dirs);
@@ -754,11 +761,20 @@ fn connect_deps(window: &MainWindow, state: SharedState, rt: Handle) {
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(w) = weak.upgrade() {
                                 w.set_dep_items(dep_status_model(&statuses));
+                                w.set_deps_downloading(false);
+                                w.set_deps_status("".into());
                             }
                         });
                     }
                     Err(e) => {
                         tracing::error!("Failed to update {dep_name}: {e}");
+                        let msg = e.to_string();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = weak.upgrade() {
+                                w.set_deps_downloading(false);
+                                w.set_deps_status(format!("Failed: {msg}").into());
+                            }
+                        });
                     }
                 }
             });
@@ -801,6 +817,7 @@ fn connect_update_all_deps(window: &MainWindow, state: SharedState, rt: Handle) 
 
         if let Some(w) = weak.upgrade() {
             w.set_deps_downloading(true);
+            w.set_deps_progress(0.0);
             w.set_deps_status("Updating dependencies...".into());
         }
 
