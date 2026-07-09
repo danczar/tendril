@@ -79,12 +79,18 @@ pub async fn ensure(
 ) -> Result<PathBuf, DependencyError> {
     let python_bin = dirs.python_bin();
     if python_bin.exists() {
-        // Python exists — make sure demucs is installed too
+        // Python exists — verify the env actually has pinned torch + demucs.
+        // A first-run failure can die between the Python extract and the pip
+        // installs; recovering with a bare `pip install demucs` would let pip
+        // resolve a floating torch and defeat TORCH_PIN.
         let versions = InstalledVersions::load(&dirs.data_dir);
-        if versions.demucs.is_some() {
+        if versions.demucs.is_some() && versions.torch.is_some() {
             return Ok(python_bin);
         }
-        // Python present but demucs missing — just pip install
+        let torch = query_python_version(&python_bin, "torch").await;
+        if !torch.as_deref().is_some_and(torch_matches_pin) {
+            install_torch(&python_bin, progress_tx.as_ref()).await?;
+        }
         return install_demucs(dirs, &python_bin, progress_tx.as_ref()).await;
     }
 
@@ -231,6 +237,8 @@ async fn install_demucs(
     .await?;
 
     let mut versions = InstalledVersions::load(&dirs.data_dir);
+    versions.python = query_version(python_bin, &["--version"]).await;
+    versions.torch = query_python_version(python_bin, "torch").await;
     versions.demucs = query_python_version(python_bin, "demucs").await;
     let _ = versions.save(&dirs.data_dir);
 
@@ -256,6 +264,7 @@ pub async fn update_demucs(dirs: &AppDirs) -> Result<(), DependencyError> {
 
     let mut versions = InstalledVersions::load(&dirs.data_dir);
     versions.demucs = query_python_version(&python_bin, "demucs").await;
+    versions.torch = query_python_version(&python_bin, "torch").await;
     let _ = versions.save(&dirs.data_dir);
 
     Ok(())
@@ -274,6 +283,16 @@ pub async fn update_demucs(dirs: &AppDirs) -> Result<(), DependencyError> {
 /// soundfile covers the write path completely.
 const TORCH_PIN: &str = "torch==2.7.1";
 const TORCHAUDIO_PIN: &str = "torchaudio==2.7.1";
+
+/// True when a live `torch.__version__` satisfies TORCH_PIN.
+/// CUDA wheels report a local suffix, e.g. "2.7.1+cu126".
+fn torch_matches_pin(version: &str) -> bool {
+    let pinned = TORCH_PIN.split_once("==").map_or(TORCH_PIN, |(_, v)| v);
+    version == pinned
+        || version
+            .strip_prefix(pinned)
+            .is_some_and(|rest| rest.starts_with('+'))
+}
 
 /// Install PyTorch, torchaudio, and the soundfile audio backend.
 ///

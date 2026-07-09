@@ -111,8 +111,14 @@ impl DependencyManager {
     }
 
     /// Check if the demucs Python environment is installed.
+    ///
+    /// Requires the recorded torch + demucs versions, not just the Python
+    /// binary — a partially-completed install must read as "not ready" so
+    /// the next `ensure_all` repairs it instead of splitting against a
+    /// broken env.
     pub fn is_demucs_ready(&self) -> bool {
-        self.dirs.python_bin().exists()
+        let versions = versions::InstalledVersions::load(&self.dirs.data_dir);
+        self.dirs.python_bin().exists() && versions.torch.is_some() && versions.demucs.is_some()
     }
 
     /// Get installation status of all dependencies (fast, local-only).
