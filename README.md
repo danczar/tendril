@@ -129,7 +129,7 @@ tendril/
 | macOS (Apple Silicon) | MPS | Supported |
 | macOS (Intel) | CPU | Supported |
 | Windows (x64) | CUDA / CPU | Supported |
-| Linux (x64) | CUDA / CPU | Untested |
+| Linux (x64) | CUDA / CPU | Build from source (CI-checked, no packaged release) |
 
 ## License
 
